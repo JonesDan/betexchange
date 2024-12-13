@@ -24,9 +24,6 @@ resource "linode_instance_config" "my-config" {
       disk_id = linode_instance_disk.swap.id
     }
 
-    sdc {
-      volume_id = "1559881"
-    }
   }
 
   booted = true
@@ -77,13 +74,18 @@ resource "linode_instance_config" "my-config" {
       destination = "/opt/app/Pipfile.lock"
   }
 
+  provisioner "file" {
+      source      = "test_python.py"
+      destination = "/opt/app/test_python.py"
+  }
+
   provisioner "remote-exec" {
     inline = [
       "echo 'Hello World!'",
       "export dynu_hostname=${var.dynu_hostname}",
       "export dynu_user=${var.dynu_user}",
       "export dynu_pwd=${var.dynu_pwd}",
-      "export linode_ip=${linode_instance.danalytics.ip_address}",
+      "export linode_ip=${linode_instance.betexchange.ip_address}",
       "bash /opt/app/scripts/linode_init.sh",
     ]
   }
@@ -127,7 +129,7 @@ resource "linode_firewall" "betexchange_firewall" {
 
   inbound_policy = "DROP"
 
-  outbound_policy = "DROP"
+  outbound_policy = "ACCEPT"
 
   linodes = [linode_instance.betexchange.id]
 }

@@ -18,5 +18,5 @@ sudo systemctl start docker
 sudo systemctl enable docker
 
 # start containers
-cd /opt/danalytics
+cd /opt/app
 docker-compose up -d
