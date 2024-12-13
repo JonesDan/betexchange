@@ -1,0 +1,12 @@
+---
+
+services:
+  worker:
+    build:
+      context: .
+    volumes:
+      - ./test_python.py:/app/test_python.py
+      - ./logs:/app/logs/
+  
+    command: tail -f /dev/null
+    
