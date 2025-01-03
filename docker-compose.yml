@@ -5,8 +5,11 @@ services:
     build:
       context: .
     volumes:
-      - ./test_python.py:/app/test_python.py
-      - ./logs:/app/logs/
-  
+      - ./app/:/app/
+      - ./certs/:/certs/
+    environment:
+      BF_USER: ${BF_USER}
+      BF_PWD: ${BF_PWD}
+      BF_API_KEY: ${BF_API_KEY}
     command: tail -f /dev/null
     
