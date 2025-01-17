@@ -1,15 +1,15 @@
 ---
-
 services:
-  worker:
+  app:
     build:
       context: .
     volumes:
-      - ./app/:/app/
+      - ./bf_api:/app/bf_api
       - ./certs/:/certs/
+    ports:
+      - "5000:5000"
     environment:
       BF_USER: ${BF_USER}
       BF_PWD: ${BF_PWD}
       BF_API_KEY: ${BF_API_KEY}
-    command: tail -f /dev/null
-    
+    command: python bf_api/app.py

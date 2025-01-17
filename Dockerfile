@@ -13,3 +13,6 @@ RUN pip install pipenv
 # Install project dependencies using pipenv
 RUN pipenv install --deploy --system
 
+# Expose the port that the Flask app runs on
+EXPOSE 5000
+

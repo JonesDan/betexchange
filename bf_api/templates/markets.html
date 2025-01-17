@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ event_name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container my-4">
+        <h1 class="text-center mb-4">{{ event_name }}</h1>
+        <table class="table table-striped table-bordered" id="data-table">
+            <thead class="table-dark">
+                <tr>
+                    <th>Market  Name</th>
+                    <th>Selection</th>
+                    <th>Back</th>
+                    <th>Lay</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for market in market_catalogue %}
+                <tr>
+                    <td>{{ market.market_name }}</a></td>
+                    <td>{{ market.selection_name }}</td>
+                    <td id="{{ market.selection_id }}">0</td>
+                    <td>0</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Open a connection to the SSE stream
+        const eventSource = new EventSource('/stream');
+
+        eventSource.onmessage = (event) => {
+            const data = JSON.parse(event.data);  // Parse the received data
+            const rowId = `row-${data.id}`;  // Assume the data includes a unique "id" field
+            const row = document.getElementById(rowId);
+
+            if (row) {
+                // Update the specific cell in the row (assuming column 3 is the "value" column)
+                const valueCell = row.children[2];
+                valueCell.textContent = data.value;
+            } else {
+                console.warn(`Row with ID ${rowId} not found.`);
+            }
+        };
+
+        eventSource.onerror = () => {
+            console.error('Error connecting to the SSE stream');
+        };
+    </script>
+</body>
+</html>
