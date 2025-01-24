@@ -20,11 +20,11 @@
             </thead>
             <tbody>
                 {% for market in market_catalogue %}
-                <tr>
+                <tr id="">
                     <td>{{ market.market_name }}</a></td>
                     <td>{{ market.selection_name }}</td>
-                    <td id="{{ market.selection_id }}">0</td>
-                    <td>0</td>
+                    <td id="{{ market.market_id }}-{{ market.selection_id }}-BACK">0</td>
+                    <td id="{{ market.market_id }}-{{ market.selection_id }}-LAY">0</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -32,25 +32,24 @@
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Open a connection to the SSE stream
+        // Open an EventSource connection to the Flask SSE endpoint
         const eventSource = new EventSource('/stream');
 
-        eventSource.onmessage = (event) => {
-            const data = JSON.parse(event.data);  // Parse the received data
-            const rowId = `row-${data.id}`;  // Assume the data includes a unique "id" field
-            const row = document.getElementById(rowId);
+        // Listen for 'update' events
+        eventSource.addEventListener('update', function(event) {
+            // Parse the incoming data
+            const data = JSON.parse(event.data);
 
-            if (row) {
-                // Update the specific cell in the row (assuming column 3 is the "value" column)
-                const valueCell = row.children[2];
-                valueCell.textContent = data.value;
-            } else {
-                console.warn(`Row with ID ${rowId} not found.`);
+            // Find the element by ID
+            const element = document.getElementById(data.id);
+            if (element) {
+                // Update the price and time fields
+                element.textContent = data.price;
             }
-        };
+        });
 
-        eventSource.onerror = () => {
-            console.error('Error connecting to the SSE stream');
+        eventSource.onerror = function() {
+            console.error("EventSource failed. Retrying...");
         };
     </script>
 </body>

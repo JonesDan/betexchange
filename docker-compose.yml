@@ -4,7 +4,7 @@ services:
     build:
       context: .
     volumes:
-      - ./bf_api:/app/bf_api
+      - ./webapp:/app/webapp
       - ./certs/:/certs/
     ports:
       - "5000:5000"
@@ -12,4 +12,34 @@ services:
       BF_USER: ${BF_USER}
       BF_PWD: ${BF_PWD}
       BF_API_KEY: ${BF_API_KEY}
-    command: python bf_api/app.py
+    command: python webapp/app.py
+    depends_on:
+      - redis
+    networks:
+      - app-network
+  
+  streaming_service:
+    build:
+      context: .
+    volumes:
+      - ./streaming:/app/streaming
+      - ./certs/:/certs/
+    environment:
+      BF_USER: ${BF_USER}
+      BF_PWD: ${BF_PWD}
+      BF_API_KEY: ${BF_API_KEY}
+    networks:
+      - app-network
+    depends_on:
+      - redis
+    command: python streaming/stream_price.py
+
+  redis:
+    image: redis:latest
+    networks:
+      - app-network
+
+
+networks:
+  app-network:
+    driver: bridge
