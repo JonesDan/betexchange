@@ -1,4 +1,4 @@
-from flask import Flask, render_template, Response, jsonify
+from flask import Flask, render_template, Response, jsonify, request
 from bf_api.list_events import list_events
 from bf_api.list_market_catalogue import list_market_catalogue
 # from bf_api.stream_price2 import list_market_catalogue
@@ -7,6 +7,15 @@ from flask_sse import sse
 from threading import Thread
 import redis
 import json
+import pickle
+import os
+import betfairlightweight
+import logging
+import collections
+
+# setup logging
+logging.basicConfig(level=logging.INFO)  # change to DEBUG to see log all updates
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config["REDIS_URL"] = "redis://redis:6379"  # Update this if using a remote Redis server
@@ -14,44 +23,103 @@ app.register_blueprint(sse, url_prefix='/stream')
 
 redis_client = redis.Redis(host='redis', port=6379)
 
+# create trading instance (app key must be activated for streaming)
+app_key = os.environ['BF_API_KEY']
+username = os.environ['BF_USER']
+password = os.environ['BF_PWD']
+trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs='/certs')
+
+# Log in to Betfair API
+trading.login()
+
 def listen_to_redis():
     with app.app_context():
         pubsub = redis_client.pubsub()
         pubsub.subscribe('stream_price')
 
+        data_cache = collections.defaultdict(dict)
         for message in pubsub.listen():
             if message['type'] == 'message':
                 data = message['data'].decode('utf-8')
                 data = json.loads(data)
-                print(data)
+
+                market_id = data['market_id']
+                selection_id = str(data['selection_id'])
+                b_l = data['b_l']
+                level = str(data['level'])
+                price = data['price']
+                size = data['size']
+                updatetime = data['update_time']
+                data_cache[market_id][selection_id][b_l][level]['price'] = price
+                data_cache[market_id][selection_id][b_l][level]['size'] = size
+
+                with open('./webapp/data_cache.pkl', 'wb') as file:
+                    pickle.dump(data_cache, file)
+
                 sse.publish(data, type='update')
-                print('data sent')
 
 # Run the Redis listener in a background thread
 Thread(target=listen_to_redis, daemon=True).start()
 
 @app.route('/')
 def home():
-    events = list_events()
+    global trading
+    events = list_events(trading)
+    redis_client.publish('event_control', "Na")  # Publish to Redis
+
     return render_template('events.html', events=events)
 
 @app.route('/event/<int:event_id>')
 def event_detail(event_id):
+    global trading
+    
     # Find the event by name
-    market_catalogue = list_market_catalogue(event_id)
+    market_catalogue = list_market_catalogue(trading, event_id)
+    with open('./webapp/market_catalogue.pkl', 'wb') as file:
+        pickle.dump(market_catalogue, file)
+
+    market_catalogue_distinct_ids = []
+    market_catalogue_distinct = []
+    for m in market_catalogue:
+        if m['market_id'] not in market_catalogue_distinct_ids:
+            market_catalogue_distinct_ids.append(m['market_id'])
+            market_catalogue_distinct.append({'id': m['market_id'], 'market_name': m['market_name']})
+
     redis_client.publish('event_control', str(event_id))  # Publish to Redis
-    return render_template('markets.html',  market_catalogue=market_catalogue, event_name=market_catalogue[0]['event'])
 
-# @app.route('/task-stream/<task_id>')
-# def task_stream(task_id):
-#     def generate():
-#         task = fetch_odds_task.AsyncResult(task_id)
-#         while not task.ready():
-#             yield f"data: {task.state}\n\n"
-#             time.sleep(1)
-#         yield f"data: {task.result}\n\n"
+    return render_template('markets2.html', markets=market_catalogue_distinct)
 
-#     return Response(generate(), content_type='text/event-stream')
+@app.route('/get-market', methods=["POST"])
+def get_event_detail():
+    selected_ids = request.json.get("selected_ids", [])
+    # Find the event by name
+    with open('./webapp/market_catalogue.pkl', 'rb') as file:
+        market_catalogue = pickle.load(file)
+    
+    with open('./webapp/data_cache.pkl', 'rb') as file:
+        data_cache = pickle.load(file)
+    
+    selected_markets = [d for d in market_catalogue if d['market_id'] in selected_ids]
+    selected_markets2 = []
+    for md in selected_markets:
+        market_name = md['market_name']
+        market_id = md['market_id']
+        selection_name = md['selection_name']
+        selection_id = md['selection_id']
+        back_level_0_price = data_cache[md][selection_id]['BACK']['0']['price']
+        lay_level_0_price = data_cache[md][selection_id]['LAY']['0']['price']
+
+        summary = {'market_name': market_name, 
+                   'market_id': market_id, 
+                   'selection_name': selection_name, 
+                   'selection_id': selection_id,
+                   'back_level_0_price': back_level_0_price,
+                   'lay_level_0_price': lay_level_0_price
+                   }
+        selected_markets2.append(summary)
+
+    return jsonify(selected_markets2)
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')

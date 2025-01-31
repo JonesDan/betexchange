@@ -5,16 +5,7 @@ import time
 import os
 from datetime import datetime, timedelta
 
-def list_market_catalogue(event_id):
-# create trading instance (app key must be activated for streaming)
-    app_key = os.environ['BF_API_KEY']
-    username = os.environ['BF_USER']
-    password = os.environ['BF_PWD']
-    trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs='/certs')
-
-    # Log in to Betfair API
-    trading.login()
-
+def list_market_catalogue(trading, event_id):
 
     # Fetch the market catalogue for the event
     market_filter = betfairlightweight.filters.market_filter(
@@ -38,7 +29,5 @@ def list_market_catalogue(event_id):
         event = market.event.name
         for x in market.runners:
             market_catalogue_list.append({'market_name':market_name, 'market_id': market_id, 'start_time': start_time, 'selection_name': x.runner_name, 'selection_id': x.selection_id, 'event': event})
-    # Log out after use
-    trading.logout()
 
     return(market_catalogue_list)

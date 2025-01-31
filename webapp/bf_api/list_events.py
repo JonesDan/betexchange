@@ -4,15 +4,7 @@ import time
 import os
 from datetime import datetime, timedelta
 
-def list_events():
-    # create trading instance (app key must be activated for streaming)
-    app_key = os.environ['BF_API_KEY']
-    username = os.environ['BF_USER']
-    password = os.environ['BF_PWD']
-    trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs='/certs')
-
-    # Log in to Betfair API
-    trading.login()
+def list_events(trading):
 
     # Specify the event type ID (e.g., 7 for horse racing, 1 for soccer)
     event_type_id = "4"
