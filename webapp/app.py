@@ -37,7 +37,7 @@ def listen_to_redis():
         pubsub = redis_client.pubsub()
         pubsub.subscribe('stream_price')
 
-        data_cache = collections.defaultdict(dict)
+        data_cache = {}
         for message in pubsub.listen():
             if message['type'] == 'message':
                 data = message['data'].decode('utf-8')
@@ -50,6 +50,20 @@ def listen_to_redis():
                 price = data['price']
                 size = data['size']
                 updatetime = data['update_time']
+
+                # Ensure market_id exists
+                if market_id not in data_cache:
+                    data_cache[market_id] = {}
+                
+                if selection_id not in data_cache[market_id]:
+                    data_cache[market_id][selection_id] = {}
+                
+                if b_l not in data_cache[market_id][selection_id]:
+                    data_cache[market_id][selection_id][b_l] = {}
+                
+                if level not in data_cache[market_id][selection_id][b_l]:
+                    data_cache[market_id][selection_id][b_l][level] = {}
+                
                 data_cache[market_id][selection_id][b_l][level]['price'] = price
                 data_cache[market_id][selection_id][b_l][level]['size'] = size
 
@@ -105,9 +119,14 @@ def get_event_detail():
         market_name = md['market_name']
         market_id = md['market_id']
         selection_name = md['selection_name']
-        selection_id = md['selection_id']
-        back_level_0_price = data_cache[md][selection_id]['BACK']['0']['price']
-        lay_level_0_price = data_cache[md][selection_id]['LAY']['0']['price']
+        selection_id = str(md['selection_id'])
+        try:
+            back_level_0_price = data_cache[market_id][selection_id]['BACK']['0']['price']
+            lay_level_0_price = data_cache[market_id][selection_id]['LAY']['0']['price']
+        except:
+            back_level_0_price = 0
+            lay_level_0_price = 0
+            pass
 
         summary = {'market_name': market_name, 
                    'market_id': market_id, 
@@ -119,6 +138,16 @@ def get_event_detail():
         selected_markets2.append(summary)
 
     return jsonify(selected_markets2)
+
+@app.route('/process_red_cells', methods=["POST"])
+def process_red_cells():
+    data = request.get_json()
+    red_cells = data.get('red_cells', [])
+    
+    print("Received red cell IDs:", red_cells)  # Debugging in console
+
+    # Example: Process IDs (you can modify this function)
+    return jsonify({"message": f"Placed orders {len(red_cells)}!"})
 
 
 if __name__ == '__main__':

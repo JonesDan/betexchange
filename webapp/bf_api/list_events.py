@@ -11,7 +11,7 @@ def list_events(trading):
     # Define the time range for market_start_time
     now = datetime.now()
     time_from = (now - timedelta(days=1)).isoformat()  # Current time in ISO format
-    time_to = (now + timedelta(days=3)).isoformat()  # 6 hours from now in ISO format
+    time_to = (now + timedelta(days=7)).isoformat()  # 6 hours from now in ISO format
 
     # Fetch the list of events for the specified event type
     market_filter = betfairlightweight.filters.market_filter(event_type_ids=[event_type_id], market_start_time={"from": time_from, "to": time_to})

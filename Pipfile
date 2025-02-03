@@ -11,6 +11,7 @@ flask = "*"
 celery = "*"
 flask-sse = "*"
 redis = "*"
+docker = "*"
 
 [dev-packages]
 

@@ -28,8 +28,11 @@
         <div class="row">
             <!-- Vertical Tab Section -->
             <div class="col-md-3 col-lg-2 vertical-tab bg-white shadow-sm">
-                <h5 class="text-center my-3">Markets</h5>
+                <button class="btn btn-primary mb-2" data-bs-toggle="collapse" data-bs-target="#market-list" >
+                    Show / Hide Markets
+                </button>
                 <div id="market-list" class="list-group">
+                    <h5 class="text-center my-3">Markets</h5>
                     {% for market in markets %}
                     <div class="market-item list-group-item list-group-item-action" id="{{ market.id }}">
                         {{ market.market_name }}
@@ -40,6 +43,8 @@
 
             <!-- Content Section -->
             <div class="col-md-9 col-lg-10 p-4">
+                <button id="redButton" class="btn btn-primary btn-lg mb-3" onclick="toggleMode('red')">Red Mode</button>
+                <button id="greenButton" class="btn btn-success btn-lg mb-3" onclick="toggleMode('green')">Green Mode</button>        
                 <h3 class="mb-4">Selected Markets</h3>
                 <div class="table-responsive">
                     <table class="table table-bordered">
@@ -93,8 +98,8 @@
                                 <tr>
                                     <td>${market.market_name}</td>
                                     <td>${market.selection_name}</td>
-                                    <td id="${market.market_id}-${market.selection_id}-BACK-0">${market.back_level_0_price}</td>
-                                    <td id="${market.market_id}-${market.selection_id}-LAY-0">${market.lay_level_0_price}</td>
+                                    <td onclick="markCell(event)" id="${market.market_id}-${market.selection_id}-BACK-0">${market.back_level_0_price}</td>
+                                    <td onclick="markCell(event)" id="${market.market_id}-${market.selection_id}-LAY-0">${market.lay_level_0_price}</td>
                                 </tr>
                             `);
                         });
@@ -124,5 +129,86 @@
             console.error("EventSource failed. Retrying...");
         };
     </script>
+    <script>
+        let activeMode = ""; // Tracks the active mode: "red", "green", or ""
+
+        function toggleMode(mode) {
+            let redButton = document.getElementById('redButton');
+            let greenButton = document.getElementById('greenButton');
+
+            if (activeMode === mode) {
+                // If clicking the active button, turn off mode
+                activeMode = "";
+                redButton.classList.remove('border', 'border-danger', 'border-3');
+                greenButton.classList.remove('border', 'border-success', 'border-3');
+            } else {
+                // Activate selected mode and deactivate the other
+                activeMode = mode;
+                
+                if (mode === "red") {
+                    redButton.classList.add('border', 'border-danger', 'border-3');
+                    greenButton.classList.remove('border', 'border-success', 'border-3');
+                } else if (mode === "green") {
+                    greenButton.classList.add('border', 'border-success', 'border-3');
+                    redButton.classList.remove('border', 'border-danger', 'border-3');
+                }
+            }
+        }
+
+        function markCell(event) {
+            if (activeMode === "red") {
+                toggleCellColor(event.target, 'red', 'white'); // Red background, white text
+            } else if (activeMode === "green") {
+                toggleCellColor(event.target, 'green', 'white'); // Green background, white text
+            }
+        }
+
+        function toggleCellColor(cell, color, textColor) {
+            if (cell.style.backgroundColor === color) {
+                // Reset to default if already active
+                cell.style.backgroundColor = '';
+                cell.style.color = '';
+            } else {
+                // Set the new color
+                cell.style.backgroundColor = color;
+                cell.style.color = textColor;
+            }
+        }
+
+        document.addEventListener("keydown", function (event) {
+            if (event.key.toLowerCase() === "z") { // Detect "Z" keypress
+                sendRedCellIDs();
+            }
+        });
+
+        function sendRedCellIDs() {
+                let redCells = [];
+                let cells = document.querySelectorAll("td");
+
+                // Collect IDs of red-highlighted cells
+                cells.forEach(cell => {
+                    if (cell.style.backgroundColor === "red") {
+                        redCells.push(cell.id);
+                    }
+                });
+
+                console.log("Red Cells:", redCells); // Debugging
+
+                // Send AJAX request using jQuery
+                $.ajax({
+                    url: "/process_red_cells",
+                    type: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({ red_cells: redCells }),
+                    success: function (response) {
+                        alert("Server Response: " + response.message);
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("Error:", error);
+                    }
+                });
+            }   
+    </script>
+
 </body>
 </html>
