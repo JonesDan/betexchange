@@ -188,7 +188,7 @@
                 // Collect IDs of red-highlighted cells
                 cells.forEach(cell => {
                     if (cell.style.backgroundColor === "red") {
-                        redCells.push(cell.id);
+                        redCells.push([cell.id, cell.textContent]);
                     }
                 });
 

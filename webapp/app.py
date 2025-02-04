@@ -1,6 +1,7 @@
 from flask import Flask, render_template, Response, jsonify, request
 from bf_api.list_events import list_events
 from bf_api.list_market_catalogue import list_market_catalogue
+from bf_api.place_orders import place_order
 # from bf_api.stream_price2 import list_market_catalogue
 from celery import Celery
 from flask_sse import sse
@@ -141,13 +142,20 @@ def get_event_detail():
 
 @app.route('/process_red_cells', methods=["POST"])
 def process_red_cells():
+    global trading
+
     data = request.get_json()
     red_cells = data.get('red_cells', [])
+
+    orderlist = [(cell[0].split('-')[0],cell[0].split('-')[1], cell[1], 1,cell[0].split('-')[2]) for cell in red_cells]
+
+    place_order(trading, orderlist)
+
     
     print("Received red cell IDs:", red_cells)  # Debugging in console
 
     # Example: Process IDs (you can modify this function)
-    return jsonify({"message": f"Placed orders {len(red_cells)}!"})
+    return jsonify({"message": f"Placed orders {red_cells}!"})
 
 
 if __name__ == '__main__':
