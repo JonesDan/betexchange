@@ -122,40 +122,52 @@ def get_event_detail():
         selection_name = md['selection_name']
         selection_id = str(md['selection_id'])
         try:
-            back_level_0_price = data_cache[market_id][selection_id]['BACK']['0']['price']
-            lay_level_0_price = data_cache[market_id][selection_id]['LAY']['0']['price']
+            back_level_2_price = data_cache[market_id][selection_id]['BACK']['2']['price'] if '2' in data_cache[market_id][selection_id]['BACK'] else 0
+            back_level_1_price = data_cache[market_id][selection_id]['BACK']['1']['price'] if '1' in data_cache[market_id][selection_id]['BACK'] else 0
+            back_level_0_price = data_cache[market_id][selection_id]['BACK']['0']['price'] if '0' in data_cache[market_id][selection_id]['BACK'] else 0
+            lay_level_0_price = data_cache[market_id][selection_id]['LAY']['0']['price'] if '0' in data_cache[market_id][selection_id]['LAY'] else 0
+            lay_level_1_price = data_cache[market_id][selection_id]['LAY']['1']['price'] if '1' in data_cache[market_id][selection_id]['LAY'] else 0
+            lay_level_2_price = data_cache[market_id][selection_id]['LAY']['2']['price'] if '2' in data_cache[market_id][selection_id]['LAY'] else 0
         except:
+            back_level_2_price = 0
+            back_level_1_price = 0
             back_level_0_price = 0
             lay_level_0_price = 0
+            lay_level_1_price = 0
+            lay_level_2_price = 0
             pass
 
         summary = {'market_name': market_name, 
                    'market_id': market_id, 
                    'selection_name': selection_name, 
                    'selection_id': selection_id,
+                   'back_level_2_price': back_level_2_price,
+                   'back_level_1_price': back_level_1_price,
                    'back_level_0_price': back_level_0_price,
-                   'lay_level_0_price': lay_level_0_price
+                   'lay_level_0_price': lay_level_0_price,
+                   'lay_level_1_price': lay_level_1_price,
+                   'lay_level_2_price': lay_level_2_price
                    }
         selected_markets2.append(summary)
 
     return jsonify(selected_markets2)
 
-@app.route('/process_red_cells', methods=["POST"])
-def process_red_cells():
+@app.route('/process_blue_cells', methods=["POST"])
+def process_blue_cells():
     global trading
 
     data = request.get_json()
-    red_cells = data.get('red_cells', [])
+    blue_cells = data.get('blue_cells', [])
 
-    orderlist = [(cell[0].split('-')[0],cell[0].split('-')[1], cell[1], 1,cell[0].split('-')[2]) for cell in red_cells]
+    orderlist = [(cell[0].split('-')[0],cell[0].split('-')[1], cell[1], 1,cell[0].split('-')[2]) for cell in blue_cells]
 
     place_order(trading, orderlist)
 
     
-    print("Received red cell IDs:", red_cells)  # Debugging in console
+    print("Received blue cell IDs:", blue_cells)  # Debugging in console
 
     # Example: Process IDs (you can modify this function)
-    return jsonify({"message": f"Placed orders {red_cells}!"})
+    return jsonify({"message": f"Placed orders {blue_cells}!"})
 
 
 if __name__ == '__main__':

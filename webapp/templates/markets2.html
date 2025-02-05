@@ -43,8 +43,8 @@
 
             <!-- Content Section -->
             <div class="col-md-9 col-lg-10 p-4">
-                <button id="redButton" class="btn btn-primary btn-lg mb-3" onclick="toggleMode('red')">Red Mode</button>
-                <button id="greenButton" class="btn btn-success btn-lg mb-3" onclick="toggleMode('green')">Green Mode</button>        
+                <button id="blueButton" class="btn btn-primary btn-lg mb-3" onclick="toggleMode('blue')">Z</button>
+                <button id="greenButton" class="btn btn-success btn-lg mb-3" onclick="toggleMode('green')">X</button>        
                 <h3 class="mb-4">Selected Markets</h3>
                 <div class="table-responsive">
                     <table class="table table-bordered">
@@ -52,8 +52,8 @@
                             <tr>
                                 <th>Market Name</th>
                                 <th>Selection</th>
-                                <th>BACK</th>
-                                <th>LAY</th>
+                                <th colspan="3">BACK</th>
+                                <th colspan="3">LAY</th>
                             </tr>
                         </thead>
                         <tbody id="selected-markets">
@@ -98,8 +98,12 @@
                                 <tr>
                                     <td>${market.market_name}</td>
                                     <td>${market.selection_name}</td>
+                                    <td onclick="markCell(event)" id="${market.market_id}-${market.selection_id}-BACK-2">${market.back_level_2_price}</td>
+                                    <td onclick="markCell(event)" id="${market.market_id}-${market.selection_id}-BACK-1">${market.back_level_1_price}</td>
                                     <td onclick="markCell(event)" id="${market.market_id}-${market.selection_id}-BACK-0">${market.back_level_0_price}</td>
                                     <td onclick="markCell(event)" id="${market.market_id}-${market.selection_id}-LAY-0">${market.lay_level_0_price}</td>
+                                    <td onclick="markCell(event)" id="${market.market_id}-${market.selection_id}-LAY-1">${market.lay_level_1_price}</td>
+                                    <td onclick="markCell(event)" id="${market.market_id}-${market.selection_id}-LAY-2">${market.lay_level_2_price}</td>
                                 </tr>
                             `);
                         });
@@ -130,34 +134,34 @@
         };
     </script>
     <script>
-        let activeMode = ""; // Tracks the active mode: "red", "green", or ""
+        let activeMode = ""; // Tracks the active mode: "blue", "green", or ""
 
         function toggleMode(mode) {
-            let redButton = document.getElementById('redButton');
+            let blueButton = document.getElementById('blueButton');
             let greenButton = document.getElementById('greenButton');
 
             if (activeMode === mode) {
                 // If clicking the active button, turn off mode
                 activeMode = "";
-                redButton.classList.remove('border', 'border-danger', 'border-3');
-                greenButton.classList.remove('border', 'border-success', 'border-3');
+                blueButton.classList.remove('border', 'border-danger', 'border-3');
+                greenButton.classList.remove('border', 'border-danger', 'border-3');
             } else {
                 // Activate selected mode and deactivate the other
                 activeMode = mode;
                 
-                if (mode === "red") {
-                    redButton.classList.add('border', 'border-danger', 'border-3');
-                    greenButton.classList.remove('border', 'border-success', 'border-3');
+                if (mode === "blue") {
+                    blueButton.classList.add('border', 'border-danger', 'border-3');
+                    greenButton.classList.remove('border', 'border-danger', 'border-3');
                 } else if (mode === "green") {
-                    greenButton.classList.add('border', 'border-success', 'border-3');
-                    redButton.classList.remove('border', 'border-danger', 'border-3');
+                    greenButton.classList.add('border', 'border-danger', 'border-3');
+                    blueButton.classList.remove('border', 'border-danger', 'border-3');
                 }
             }
         }
 
         function markCell(event) {
-            if (activeMode === "red") {
-                toggleCellColor(event.target, 'red', 'white'); // Red background, white text
+            if (activeMode === "blue") {
+                toggleCellColor(event.target, 'blue', 'white'); // Blue background, white text
             } else if (activeMode === "green") {
                 toggleCellColor(event.target, 'green', 'white'); // Green background, white text
             }
@@ -177,29 +181,29 @@
 
         document.addEventListener("keydown", function (event) {
             if (event.key.toLowerCase() === "z") { // Detect "Z" keypress
-                sendRedCellIDs();
+                sendBlueCellIDs();
             }
         });
 
-        function sendRedCellIDs() {
-                let redCells = [];
+        function sendBlueCellIDs() {
+                let blueCells = [];
                 let cells = document.querySelectorAll("td");
 
-                // Collect IDs of red-highlighted cells
+                // Collect IDs of blue-highlighted cells
                 cells.forEach(cell => {
-                    if (cell.style.backgroundColor === "red") {
-                        redCells.push([cell.id, cell.textContent]);
+                    if (cell.style.backgroundColor === "blue") {
+                        blueCells.push([cell.id, cell.textContent]);
                     }
                 });
 
-                console.log("Red Cells:", redCells); // Debugging
+                console.log("Blue Cells:", blueCells); // Debugging
 
                 // Send AJAX request using jQuery
                 $.ajax({
-                    url: "/process_red_cells",
+                    url: "/process_blue_cells",
                     type: "POST",
                     contentType: "application/json",
-                    data: JSON.stringify({ red_cells: redCells }),
+                    data: JSON.stringify({ blue_cells: blueCells }),
                     success: function (response) {
                         alert("Server Response: " + response.message);
                     },
