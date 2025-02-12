@@ -12,7 +12,7 @@ services:
       BF_USER: ${BF_USER}
       BF_PWD: ${BF_PWD}
       BF_API_KEY: ${BF_API_KEY}
-    command: python webapp/app.py
+    command: python webapp/app2.py
     depends_on:
       - redis
     networks:

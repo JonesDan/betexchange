@@ -54,7 +54,7 @@ def stream_price(event_id):
         event_ids=[event_id]
     )
     market_data_filter = streaming_market_data_filter(
-        fields=["EX_BEST_OFFERS", "EX_MARKET_DEF"], ladder_levels=3
+        fields=["EX_BEST_OFFERS", "EX_MARKET_DEF"], ladder_levels=10
     )
 
     # create streaming object

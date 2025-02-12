@@ -7,6 +7,7 @@
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .vertical-tab {
             max-width: 200px;
@@ -76,8 +77,11 @@
                             <tr>
                                 <th>Market Name</th>
                                 <th>Selection</th>
-                                <th colspan="3">BACK</th>
-                                <th colspan="3">LAY</th>
+                                <th>Size</th>
+                                <th>Min Price</th>
+                                <th>BACK</th>
+                                <th>Best Price</th>
+                                <!-- <th colspan="5">BACK</th> -->
                             </tr>
                         </thead>
                         <tbody id="selected-markets">
@@ -93,6 +97,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
+        let priceList = {};
         $(document).ready(function () {
             let selectedIds = [];
 
@@ -125,18 +130,58 @@
                                 <tr>
                                     <td>${market.market_name}</td>
                                     <td>${market.selection_name}</td>
-                                    <td onclick="markCell(event)" id="${market.market_id}-${market.selection_id}-BACK-2">${market.back_level_2_price}<br><span class="small-text">(£${market.back_level_2_size})</span></td>
-                                    <td onclick="markCell(event)" id="${market.market_id}-${market.selection_id}-BACK-1">${market.back_level_1_price}<br><span class="small-text">(£${market.back_level_1_size})</span></td>
-                                    <td onclick="markCell(event)" id="${market.market_id}-${market.selection_id}-BACK-0">${market.back_level_0_price}<br><span class="small-text">(£${market.back_level_0_size})</span></td>
-                                    <td onclick="markCell(event)" id="${market.market_id}-${market.selection_id}-LAY-0">${market.lay_level_0_price}<br><span class="small-text">(£${market.lay_level_0_size})</span></td>
-                                    <td onclick="markCell(event)" id="${market.market_id}-${market.selection_id}-LAY-1">${market.lay_level_1_price}<br><span class="small-text">(£${market.lay_level_1_size})</span></td>
-                                    <td onclick="markCell(event)" id="${market.market_id}-${market.selection_id}-LAY-2">${market.lay_level_2_price}<br><span class="small-text">(£${market.lay_level_2_size})</span></td>
+                                    <td><input type="number"></td>
+                                    <td class="min-price">${market.price.at(-1)}</td>
+                                    <td>
+                                        <canvas id="${market.id}" height="40"></canvas>
+                                        <span>
+                                            <input type="range" class="form-range slider-min" 
+                                            id="slider-min-${market.id}" 
+                                            data-id="${market.id}" 
+                                            min="0" 
+                                            max="9"
+                                            step="1"
+                                            value="10"
+                                            oninput="updatePrice(this)"
+                                            >
+                                            </span>
+                                        </td>
+                                    <td class="max-price">${market.price.at(-1)}</td>
                                 </tr>
                             `);
+
+                            priceList[`slider-min-${market.id}`] = market.price;
+
+                            var ctx = document.getElementById(market.id).getContext("2d");
+                            new Chart(ctx, {
+                                type: "bar",
+                                data: {
+                                    labels: market.levels,
+                                    datasets: [{
+                                        label: "Scores",
+                                        data: market.size,
+                                        backgroundColor: "rgba(54, 162, 235, 0.6)"
+                                    }]
+                                },
+                                options: {
+                                    responsive: false,
+                                    scales: { y: { display: false }, x: { display: false } },
+                                    plugins: { legend: { display: false } }
+                                }
+                            })
                         });
+
+                    }
                 });
             });
         });
+        // Function to update price when slider moves
+        function updatePrice(slider) {
+            // if (priceList.length === 0) return;  // Ensure prices are loaded
+            let row = slider.closest("tr");
+            let priceCell = row.querySelector(".min-price");
+            priceCell.textContent = priceList[slider.id].at(slider.value);  // Update price
+        }
     </script>
     <script>
         // Open an EventSource connection to the Flask SSE endpoint
@@ -150,11 +195,30 @@
             // Find the element by ID
             const element = document.getElementById(data.id);
             const el_updatetime = document.getElementById("update_time");
-            if (element) {
-                // Update the price and time fields
-                element.innerHTML = `${data.price}<br><span class="small-text">(£${data.size})</span>`;
-                el_updatetime.innerHTML = `Selected Markets <span class="small-text">updated_at: ${data.update_time}</span>`
-            }
+            // if (element) {
+            //     // Update the price and time fields
+            //     element.innerHTML = `${data.price}<br><span class="small-text">(£${data.size})</span>`;
+            //     el_updatetime.innerHTML = `Selected Markets <span class="small-text">updated_at: ${data.update_time}</span>`
+            // }
+
+            var ctx = document.getElementById(data.id).getContext("2d");
+            new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: data.levels,
+                    datasets: [{
+                        label: "Scores",
+                        data: data.size,
+                        backgroundColor: "rgba(54, 162, 235, 0.6)"
+                    }]
+                },
+                options: {
+                    responsive: false,
+                    scales: { y: { display: false }, x: { display: false } },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
         });
 
         eventSource.onerror = function() {
@@ -162,91 +226,42 @@
         };
     </script>
     <script>
-        let activeMode = ""; // Tracks the active mode: "blue", "green", or ""
+        // let priceList = [];
 
-        function toggleMode(mode) {
-            let blueButton = document.getElementById('blueButton');
-            let greenButton = document.getElementById('greenButton');
+        // // Function to fetch updated price list from Flask
+        // function fetchPrices() {
+        //     fetch('/get_prices')  // AJAX request to Flask
+        //         .then(response => response.json())
+        //         .then(data => {
+        //             priceList = data;
+        //             console.log("Updated Price List:", priceList);
+        //             updateAllPrices();  // Update all visible prices
+        //         })
+        //         .catch(error => console.error("Error fetching prices:", error));
+        // }
 
-            if (activeMode === mode) {
-                // If clicking the active button, turn off mode
-                activeMode = "";
-                blueButton.classList.remove('border', 'border-danger', 'border-3');
-                greenButton.classList.remove('border', 'border-danger', 'border-3');
-            } else {
-                // Activate selected mode and deactivate the other
-                activeMode = mode;
-                
-                if (mode === "blue") {
-                    blueButton.classList.add('border', 'border-danger', 'border-3');
-                    greenButton.classList.remove('border', 'border-danger', 'border-3');
-                } else if (mode === "green") {
-                    greenButton.classList.add('border', 'border-danger', 'border-3');
-                    blueButton.classList.remove('border', 'border-danger', 'border-3');
-                }
-            }
-        }
+        
 
-        function markCell(event) {
-            if (activeMode === "blue") {
-                toggleCellColor(event.target, 'blue', 'white'); // Blue background, white text
-            } else if (activeMode === "green") {
-                toggleCellColor(event.target, 'green', 'white'); // Green background, white text
-            }
-        }
+        // // Function to update price when slider moves
+        // function updatePrice(slider) {
+        //     if (priceList.length === 0) return;  // Ensure prices are loaded
+        //     let row = slider.closest("tr");
+        //     let priceCell = row.querySelector(".min-price");
+        //     priceCell.textContent = priceList[slider.value];  // Update price
+        // }
 
-        function toggleCellColor(cell, color, textColor) {
-            if (cell.style.backgroundColor === color) {
-                // Reset to default if already active
-                cell.style.backgroundColor = '';
-                cell.style.color = '';
-            } else {
-                // Set the new color
-                cell.style.backgroundColor = color;
-                cell.style.color = textColor;
-            }
-        }
+        // // Update all rows (after fetching prices)
+        // function updateAllPrices() {
+        //     document.querySelectorAll("input[type='range']").forEach(slider => {
+        //         updatePrice(slider);
+        //     });
+        // }
 
-        document.addEventListener("keydown", function (event) {
-            if (event.key.toLowerCase() === "z") { // Detect "Z" keypress
-                sendBlueCellIDs();
-            }
-        });
-
-        function sendBlueCellIDs() {
-                let blueCells = [];
-                let cells = document.querySelectorAll("td");
-
-                // Collect IDs of blue-highlighted cells
-                cells.forEach(cell => {
-                    if (cell.style.backgroundColor === "blue") {
-                        blueCells.push([cell.id, cell.textContent]);
-                    }
-                });
-
-                console.log("Blue Cells:", blueCells); // Debugging
-
-                // Send AJAX request using jQuery
-                $.ajax({
-                    url: "/process_blue_cells",
-                    type: "POST",
-                    contentType: "application/json",
-                    data: JSON.stringify({ blue_cells: blueCells }),
-                    success: function (response) {
-                        $("#message-text").text(response.message);
-                        $("#temp-message").fadeIn();
-
-                        // Auto-hide the message after 3 seconds
-                        setTimeout(function() {
-                            $("#temp-message").fadeOut();
-                        }, 3000);
-                    },
-                    error: function (xhr, status, error) {
-                        console.error("Error:", error);
-                    }
-                });
-            }   
+        // // Fetch prices when the page loads
+        // window.onload = fetchPrices;
     </script>
+
+
 
 </body>
 </html>

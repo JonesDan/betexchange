@@ -13,6 +13,7 @@ import os
 import betfairlightweight
 import logging
 import collections
+from datetime import datetime
 
 # setup logging
 logging.basicConfig(level=logging.INFO)  # change to DEBUG to see log all updates
@@ -67,6 +68,7 @@ def listen_to_redis():
                 
                 data_cache[market_id][selection_id][b_l][level]['price'] = price
                 data_cache[market_id][selection_id][b_l][level]['size'] = size
+                data_cache[market_id][selection_id][b_l][level]['update_time'] = updatetime
 
                 with open('./webapp/data_cache.pkl', 'wb') as file:
                     pickle.dump(data_cache, file)
@@ -116,6 +118,7 @@ def get_event_detail():
     
     selected_markets = [d for d in market_catalogue if d['market_id'] in selected_ids]
     selected_markets2 = []
+    updatetimelist = []
     for md in selected_markets:
         market_name = md['market_name']
         market_id = md['market_id']
@@ -128,6 +131,22 @@ def get_event_detail():
             lay_level_0_price = data_cache[market_id][selection_id]['LAY']['0']['price'] if '0' in data_cache[market_id][selection_id]['LAY'] else 0
             lay_level_1_price = data_cache[market_id][selection_id]['LAY']['1']['price'] if '1' in data_cache[market_id][selection_id]['LAY'] else 0
             lay_level_2_price = data_cache[market_id][selection_id]['LAY']['2']['price'] if '2' in data_cache[market_id][selection_id]['LAY'] else 0
+
+            back_level_2_size = data_cache[market_id][selection_id]['BACK']['2']['size'] if '2' in data_cache[market_id][selection_id]['BACK'] else 0
+            back_level_1_size = data_cache[market_id][selection_id]['BACK']['1']['size'] if '1' in data_cache[market_id][selection_id]['BACK'] else 0
+            back_level_0_size = data_cache[market_id][selection_id]['BACK']['0']['size'] if '0' in data_cache[market_id][selection_id]['BACK'] else 0
+            lay_level_0_size = data_cache[market_id][selection_id]['LAY']['0']['size'] if '0' in data_cache[market_id][selection_id]['LAY'] else 0
+            lay_level_1_size = data_cache[market_id][selection_id]['LAY']['1']['size'] if '1' in data_cache[market_id][selection_id]['LAY'] else 0
+            lay_level_2_size = data_cache[market_id][selection_id]['LAY']['2']['size'] if '2' in data_cache[market_id][selection_id]['LAY'] else 0
+
+            back_level_2_updatetime = data_cache[market_id][selection_id]['BACK']['2']['update_time'] if '2' in data_cache[market_id][selection_id]['BACK'] else '0'
+            back_level_1_updatetime = data_cache[market_id][selection_id]['BACK']['1']['update_time'] if '1' in data_cache[market_id][selection_id]['BACK'] else '0'
+            back_level_0_updatetime = data_cache[market_id][selection_id]['BACK']['0']['update_time'] if '0' in data_cache[market_id][selection_id]['BACK'] else '0'
+            lay_level_0_updatetime = data_cache[market_id][selection_id]['LAY']['0']['update_time'] if '0' in data_cache[market_id][selection_id]['LAY'] else '0'
+            lay_level_1_updatetime = data_cache[market_id][selection_id]['LAY']['1']['update_time'] if '1' in data_cache[market_id][selection_id]['LAY'] else '0'
+            lay_level_2_updatetime = data_cache[market_id][selection_id]['LAY']['2']['update_time'] if '2' in data_cache[market_id][selection_id]['LAY'] else '0'
+
+            updatetimelist += [back_level_2_updatetime, back_level_1_updatetime, back_level_0_updatetime, lay_level_0_updatetime, lay_level_1_updatetime, lay_level_2_updatetime]
         except:
             back_level_2_price = 0
             back_level_1_price = 0
@@ -135,22 +154,44 @@ def get_event_detail():
             lay_level_0_price = 0
             lay_level_1_price = 0
             lay_level_2_price = 0
+
+            back_level_2_size = 0
+            back_level_1_size = 0
+            back_level_0_size = 0
+            lay_level_0_size = 0
+            lay_level_1_size = 0
+            lay_level_2_size = 0
+
+            back_level_2_updatetime = '0'
+            back_level_1_updatetime = '0'
+            back_level_0_updatetime = '0'
+            lay_level_0_updatetime = '0'
+            lay_level_1_updatetime = '0'
+            lay_level_2_updatetime = '0'
             pass
 
-        summary = {'market_name': market_name, 
-                   'market_id': market_id, 
-                   'selection_name': selection_name, 
+        summary = {'market_name': market_name,
+                   'market_id': market_id,
+                   'selection_name': selection_name,
                    'selection_id': selection_id,
                    'back_level_2_price': back_level_2_price,
                    'back_level_1_price': back_level_1_price,
                    'back_level_0_price': back_level_0_price,
                    'lay_level_0_price': lay_level_0_price,
                    'lay_level_1_price': lay_level_1_price,
-                   'lay_level_2_price': lay_level_2_price
+                   'lay_level_2_price': lay_level_2_price,
+                   'back_level_2_size': back_level_2_size,
+                   'back_level_1_size': back_level_1_size,
+                   'back_level_0_size': back_level_0_size,
+                   'lay_level_0_size': lay_level_0_size,
+                   'lay_level_1_size': lay_level_1_size,
+                   'lay_level_2_size': lay_level_2_size
                    }
         selected_markets2.append(summary)
 
-    return jsonify(selected_markets2)
+    updatetime = max(updatetimelist) if len(updatetimelist) > 0 else ""
+    selected_markets3 = {'update_time':updatetime, 'selected_markets': selected_markets2}
+    return jsonify(selected_markets3)
 
 @app.route('/process_blue_cells', methods=["POST"])
 def process_blue_cells():
@@ -159,15 +200,13 @@ def process_blue_cells():
     data = request.get_json()
     blue_cells = data.get('blue_cells', [])
 
-    orderlist = [(cell[0].split('-')[0],cell[0].split('-')[1], cell[1], 1,cell[0].split('-')[2]) for cell in blue_cells]
+    orderlist = [(cell[0].split('-')[0],cell[0].split('-')[1], cell[1].split('(')[0], 1,cell[0].split('-')[2]) for cell in blue_cells]
 
-    place_order(trading, orderlist)
-
-    
-    print("Received blue cell IDs:", blue_cells)  # Debugging in console
+    response = place_order(trading, orderlist)
+    response_str = "\n\n".join(response)
 
     # Example: Process IDs (you can modify this function)
-    return jsonify({"message": f"Placed orders {blue_cells}!"})
+    return jsonify({"message": f"{response_str}"})
 
 
 if __name__ == '__main__':

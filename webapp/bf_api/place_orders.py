@@ -19,6 +19,8 @@ import os
 def place_order(trading, orderlist):
     # placing an order
     instructions = []
+
+    order_response = []
     for market_id, selection_id, price, size, side in orderlist:
         limit_order = filters.limit_order(size=float(size), price=float(price), persistence_type="LAPSE")
         instruction = filters.place_instruction(
@@ -33,12 +35,9 @@ def place_order(trading, orderlist):
             market_id=market_id, instructions=instructions  # list
         )
 
-    print(place_orders.status)
-    for order in place_orders.place_instruction_reports:
-        print(
-            "Status: %s, BetId: %s, Average Price Matched: %s "
-            % (order.status, order.bet_id, order.average_price_matched)
-        )
+        order_response += place_orders.place_instruction_reports
+    
+    return [f"Status: {order.status}, BetId: {order.bet_id}, Average Price Matched: {order.average_price_matched}" for order in order_response]
 
 # place_order(trading, orderlist)
 # def update_order(bet_id):
