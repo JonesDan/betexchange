@@ -5,10 +5,33 @@ from tenacity import retry, wait_exponential
 import betfairlightweight
 from betfairlightweight import StreamListener
 from betfairlightweight import BetfairError
+import os
+from cryptography.fernet import Fernet
 
-# setup logging
-logging.basicConfig(level=logging.INFO)  # change to DEBUG to see log all updates
-logger = logging.getLogger(__name__)
+
+def init_logger(filename):
+    # Logging
+    logging.basicConfig(level=logging.INFO
+                        , filename=f'streaming/{filename}.log'
+                        , format='%(asctime)s - %(levelname)s - %(message)s'
+                        )
+    logger = logging.getLogger(filename)
+    logger.setLevel(logging.INFO)
+
+    # Create file handler
+    file_handler = logging.FileHandler(f'streaming/{filename}.log')
+    file_handler.setLevel(logging.DEBUG)
+
+    # Create console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+
+    # Add handlers to the logger
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+    return logger
+
 
 class Streaming(threading.Thread):
     def __init__(
@@ -28,10 +51,11 @@ class Streaming(threading.Thread):
         self.stream = None
         self.output_queue = queue.Queue()
         self.listener = StreamListener(output_queue=self.output_queue)
+        self.logger = init_logger('price_streaming_class')
 
     @retry(wait=wait_exponential(multiplier=1, min=2, max=20))
     def run(self) -> None:
-        logger.info("Starting MarketStreaming")
+        self.logger.info("Starting MarketStreaming")
         self.client.login()
         self.stream = self.client.streaming.create_stream(
             unique_id=self.streaming_unique_id, listener=self.listener
@@ -46,13 +70,38 @@ class Streaming(threading.Thread):
             )
             self.stream.start()
         except BetfairError:
-            logger.error("MarketStreaming run error", exc_info=True)
+            self.logger.error("MarketStreaming run error", exc_info=True)
             raise
         except Exception:
-            logger.critical("MarketStreaming run error", exc_info=True)
+            self.logger.critical("MarketStreaming run error", exc_info=True)
             raise
-        logger.info("Stopped MarketStreaming %s", self.streaming_unique_id)
+        self.logger.info("Stopped MarketStreaming %s", self.streaming_unique_id)
 
     def stop(self) -> None:
         if self.stream:
             self.stream.stop()
+
+def bf_login(logger):
+    # create trading instance (app key must be activated for streaming)
+    try:
+        app_key = os.environ['BF_API_KEY']
+        username = os.environ['BF_USER']
+        with open('/data/betfair_token.key', "rb") as f:
+            key = f.read().strip()
+
+        cipher = Fernet(key)
+        with open('/data/betfair_token.txt', "rb") as file:
+            encrypted_password = file.read().strip()  # Remove any leading/trailing whitespace
+
+        password = cipher.decrypt(encrypted_password).decode()
+        logger.info('username=\n'+username)
+        trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs='/certs')
+        # trading.session_token = token
+
+        # Log in to Betfair API
+        trading.login()
+    except Exception as e:
+        logger.error(f"Error while streaming: {e}")
+        pass
+
+    return trading

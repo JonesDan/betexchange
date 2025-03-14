@@ -50,6 +50,22 @@ resource "linode_instance_config" "my-config" {
   }
 
   provisioner "file" {
+    source      = "streaming"
+    destination = "/opt/app" 
+  }
+
+  provisioner "file" {
+    source      = "webapp"
+    destination = "/opt/app" 
+  }
+
+  provisioner "file" {
+    source      = "certs"
+    destination = "/opt/app" 
+  }
+
+
+  provisioner "file" {
     source      = ".env"
     destination = "/opt/app/.env"
   }
@@ -125,6 +141,24 @@ resource "linode_firewall" "betexchange_firewall" {
     ports    = "22"
     ipv4     = ["0.0.0.0/0"]
     ipv6     = ["::/0"]
+  }
+
+   inbound {
+    label    = "allow-web-traffic"
+    action   = "ACCEPT"
+    protocol = "TCP"
+    ports    = "5000"
+    ipv4     = ["0.0.0.0/0"]
+    # ipv6     = ["::/0"]
+  }
+
+  outbound {
+    label    = "allow-web-traffic"
+    action   = "ACCEPT"
+    protocol = "TCP"
+    ports    = "5000"
+    ipv4     = ["0.0.0.0/0"]
+    # ipv6     = ["::/0"]
   }
 
   inbound_policy = "DROP"

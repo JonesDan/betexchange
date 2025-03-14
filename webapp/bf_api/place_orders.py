@@ -1,6 +1,7 @@
 import betfairlightweight
 from betfairlightweight import filters
 import os
+import logging
 
 # # create trading instance (app key must be activated for streaming)
 # app_key = os.environ['BF_API_KEY']
@@ -16,28 +17,31 @@ import os
 # selection_id = 47972
 
 
-def place_order(trading, orderlist):
+def place_order(trading, selection_id, b_l, market_id, size, price, sizeMin, result_queue):
     # placing an order
     instructions = []
-
     order_response = []
-    for market_id, selection_id, price, size, side in orderlist:
-        limit_order = filters.limit_order(size=float(size), price=float(price), persistence_type="LAPSE")
-        instruction = filters.place_instruction(
-            order_type="LIMIT",
-            selection_id=selection_id,
-            side=side,
-            limit_order=limit_order,
-        )
-        instructions.append(instruction)
-    
-        place_orders = trading.betting.place_orders(
-            market_id=market_id, instructions=instructions  # list
-        )
 
-        order_response += place_orders.place_instruction_reports
+    limit_order = filters.limit_order(size=size, price=price, persistence_type="LAPSE", time_in_force="FILL_OR_KILL", min_fill_size=sizeMin)
+    instruction = filters.place_instruction(
+        order_type="LIMIT",
+        selection_id=selection_id,
+        side=b_l,
+        limit_order=limit_order,
+    )
+    instructions.append(instruction)
     
-    return [f"Status: {order.status}, BetId: {order.bet_id}, Average Price Matched: {order.average_price_matched}" for order in order_response]
+    place_orders = trading.betting.place_orders(
+        market_id=market_id, instructions=instructions  # list
+    )
+
+    order_response += place_orders.place_instruction_reports
+
+    result = '\n'.join([f"Status: {order.status}, BetId: {order.bet_id}, Average Price Matched: {order.average_price_matched}" for order in order_response])
+    result_queue.put(result)
+
+    return(result)
+    
 
 # place_order(trading, orderlist)
 # def update_order(bet_id):

@@ -12,6 +12,8 @@ celery = "*"
 flask-sse = "*"
 redis = "*"
 docker = "*"
+flask-session = "*"
+cryptography = "*"
 
 [dev-packages]
 

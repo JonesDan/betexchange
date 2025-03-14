@@ -1,0 +1,219 @@
+{
+    "id": "1.240800015",
+    "marketDefinition": {
+        "bspMarket": false,
+        "turnInPlayEnabled": true,
+        "persistenceEnabled": true,
+        "marketBaseRate": 5,
+        "eventId": "34117655",
+        "eventTypeId": "4",
+        "numberOfWinners": 1,
+        "bettingType": "ODDS",
+        "marketType": "MATCH_ODDS",
+        "marketTime": "2025-03-14T12:30:00.000Z",
+        "suspendTime": "2025-03-14T12:30:00.000Z",
+        "bspReconciled": false,
+        "complete": true,
+        "inPlay": true,
+        "crossMatching": true,
+        "runnersVoidable": false,
+        "numberOfActiveRunners": 2,
+        "betDelay": 5,
+        "status": "OPEN",
+        "runners": [
+            {
+                "status": "ACTIVE",
+                "sortPriority": 1,
+                "id": 65958740
+            },
+            {
+                "status": "ACTIVE",
+                "sortPriority": 2,
+                "id": 65994092
+            }
+        ],
+        "regulators": [
+            "MR_INT"
+        ],
+        "countryCode": "GB",
+        "discountAllowed": true,
+        "timezone": "GMT",
+        "openDate": "2025-03-14T12:30:00.000Z",
+        "version": 6497722530,
+        "priceLadderDefinition": {
+            "type": "CLASSIC"
+        }
+    },
+    "rc": [
+        {
+            "batb": [
+                [
+                    9,
+                    1.38,
+                    15.24
+                ],
+                [
+                    8,
+                    1.44,
+                    10.01
+                ],
+                [
+                    7,
+                    1.48,
+                    8.14
+                ],
+                [
+                    6,
+                    1.55,
+                    7.7
+                ],
+                [
+                    5,
+                    1.6,
+                    42.8
+                ],
+                [
+                    4,
+                    1.7,
+                    111
+                ],
+                [
+                    3,
+                    1.78,
+                    2.15
+                ],
+                [
+                    2,
+                    2.12,
+                    4.6
+                ],
+                [
+                    1,
+                    2.14,
+                    2.31
+                ],
+                [
+                    0,
+                    3.55,
+                    1.07
+                ]
+            ],
+            "batl": [
+                [
+                    0,
+                    9,
+                    3.35
+                ]
+            ],
+            "id": 65958740
+        },
+        {
+            "batb": [
+                [
+                    9,
+                    1.06,
+                    47.34
+                ],
+                [
+                    8,
+                    1.07,
+                    36.38
+                ],
+                [
+                    7,
+                    1.08,
+                    21.01
+                ],
+                [
+                    6,
+                    1.09,
+                    18.67
+                ],
+                [
+                    5,
+                    1.1,
+                    17.22
+                ],
+                [
+                    4,
+                    1.12,
+                    47.25
+                ],
+                [
+                    3,
+                    1.14,
+                    444.92
+                ],
+                [
+                    2,
+                    1.19,
+                    6.04
+                ],
+                [
+                    1,
+                    1.24,
+                    41.84
+                ],
+                [
+                    0,
+                    1.31,
+                    20.07
+                ]
+            ],
+            "batl": [
+                [
+                    9,
+                    4,
+                    7.07
+                ],
+                [
+                    8,
+                    2.5,
+                    7.04
+                ],
+                [
+                    7,
+                    1.83,
+                    2.09
+                ],
+                [
+                    6,
+                    1.6,
+                    20.92
+                ],
+                [
+                    5,
+                    1.51,
+                    3.9
+                ],
+                [
+                    4,
+                    1.5,
+                    202.86
+                ],
+                [
+                    3,
+                    1.4,
+                    250
+                ],
+                [
+                    2,
+                    1.39,
+                    44
+                ],
+                [
+                    1,
+                    1.35,
+                    76.16
+                ],
+                [
+                    0,
+                    1.32,
+                    35.52
+                ]
+            ],
+            "id": 65994092
+        }
+    ],
+    "img": true
+}

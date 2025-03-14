@@ -198,13 +198,19 @@ def get_event_detail():
         # levels = list(data_cache[market_id][selection_id]['BACK'].keys())
         # levels.sort(reverse=True)
         levels = [x for x in range(10)]
+        if 'LAY' in data_cache[market_id][selection_id]:
+            lay_size = [data_cache[market_id][selection_id]['LAY'][str(level)]['size'] if str(level) in data_cache[market_id][selection_id]['LAY'] else 0 for level in levels]
+            lay_price = [data_cache[market_id][selection_id]['LAY'][str(level)]['price'] if str(level)in data_cache[market_id][selection_id]['LAY'] else 0 for level in levels]
+        else:
+            lay_size = [0 for level in levels]
+            lay_price = [0 for level in levels]
+
         levels.sort(reverse=True)
+        bk_size = [data_cache[market_id][selection_id]['BACK'][str(level)]['size'] if str(level) in data_cache[market_id][selection_id]['BACK'] else 0 for level in levels]
+        bk_price = [data_cache[market_id][selection_id]['BACK'][str(level)]['price'] if str(level)in data_cache[market_id][selection_id]['BACK'] else 0 for level in levels]
+        id = market_id+'-'+selection_id
 
-        size = [data_cache[market_id][selection_id]['BACK'][str(level)]['size'] if str(level) in data_cache[market_id][selection_id]['BACK'] else 0 for level in levels]
-        price = [data_cache[market_id][selection_id]['BACK'][str(level)]['price'] if str(level)in data_cache[market_id][selection_id]['BACK'] else 0 for level in levels]
-        id = market_id+'-'+selection_id+'-BACK'
-
-        summary2 = {'levels':levels, 'size': size, 'price': price, 'id':id,'market_name': market_name,'selection_name': selection_name}
+        summary2 = {'levels':levels, 'bk_size': bk_size, 'bk_price': bk_price, 'lay_size': lay_size, 'lay_price': lay_price,'id':id,'market_name': market_name,'selection_name': selection_name}
         selected_markets2.append(summary2)
 
     updatetime = max(updatetimelist) if len(updatetimelist) > 0 else ""

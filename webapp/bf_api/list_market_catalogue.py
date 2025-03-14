@@ -4,8 +4,10 @@ from betfairlightweight import filters
 import time
 import os
 from datetime import datetime, timedelta
+import json
+from utils import datetime_serializer
 
-def list_market_catalogue(trading, event_id):
+def func_list_market_catalogue(trading, event_id):
 
     # Fetch the market catalogue for the event
     market_filter = betfairlightweight.filters.market_filter(
@@ -27,7 +29,13 @@ def list_market_catalogue(trading, event_id):
         market_id = market.market_id
         start_time = market.market_start_time
         event = market.event.name
+        total_matched = market.total_matched
+        desc = market.description
+
         for x in market.runners:
-            market_catalogue_list.append({'market_name':market_name, 'market_id': market_id, 'start_time': start_time, 'selection_name': x.runner_name, 'selection_id': x.selection_id, 'event': event})
+            market_catalogue_list.append({'market_name':market_name, 'market_id': market_id, 'start_time': start_time, 'selection_name': x.runner_name, 'selection_id': x.selection_id, 'event': event, 'total_matched': total_matched, 'desc': desc})
+
+    with open('webapp/sample/list_market_catalogue.json', 'w') as json_file:
+        json.dump(market_catalogue_list, json_file, indent=4, default=datetime_serializer)
 
     return(market_catalogue_list)

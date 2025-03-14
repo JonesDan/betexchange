@@ -12,42 +12,37 @@ from betfairlightweight.filters import (
 )
 import os
 import redis
-from utils import Streaming
+from utils import Streaming, bf_login, init_logger
 import time
 import json
+from datetime import datetime
+import multiprocessing
 
-"""
-Streaming example to handle timeouts or connection errors, 
-with reconnect.
-
-Code uses 'tenacity' library for retrying.
-
-Streaming class inherits threading module to simplify start/
-stop.
-"""
-
-# setup logging
-logging.basicConfig(level=logging.INFO)  # change to DEBUG to see log all updates
-logger = logging.getLogger(__name__)
+logger = init_logger('price_streaming')
 
 redis_client = redis.Redis(host='redis', port=6379)
 
 current_event_id = None
 streaming_active = False
 
+pubsub = redis_client.pubsub()
+pubsub.subscribe('event_control')
+counter = 0
+
+def datetime_serializer(obj):
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Type {type(obj)} not serializable")
+
 def stream_price(event_id):
-    global streaming_active
+    # global streaming_active
     streaming_active = True
-    logger.info(f"streaming_active = {streaming_active}")
 
-    # create trading instance (app key must be activated for streaming)
-    app_key = os.environ['BF_API_KEY']
-    username = os.environ['BF_USER']
-    password = os.environ['BF_PWD']
-    trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs='/certs')
+    logger = init_logger('price_streaming_process')
 
-    # login
-    trading.login()
+    logger.info(f"Streaming active:{streaming_active}")
+
+    trading = bf_login(logger)
 
     # create filters (GB WIN racing)
     market_filter = streaming_market_filter(
@@ -62,72 +57,67 @@ def stream_price(event_id):
 
     # start streaming (runs in new thread and handles any errors)
     streaming.start()
-    logger.info(f'*** start stream ***')
+    logger.info(f'*** Stream started for {event_id} ***')
+
+    counter = 0
 
     try:
         # check for updates in output queue
-        while streaming_active:
-            market_books = streaming.output_queue.get()
-            logger.info(f'start straming for market_books {event_id}')
-            for market_book in market_books:
-                # print(
-                #     # market_book.streaming_unique_id,  # unique id of stream (returned from subscribe request)
-                #     market_book.streaming_update,  # json update received
-                #     # market_book.market_definition,  # streaming definition, similar to catalogue request
-                #     # market_book.publish_time,  # betfair publish time of update
-                # )
-                data = market_book.streaming_update
-                time = market_book.publish_time
-                if 'rc' in data:
-                    for d in data['rc']:
-                        if 'batl' in d:
-                            for d1 in d['batl']:
-                                summary = {'id':str(data['id']) + '-' + str(d['id']) + '-LAY-' + str(d1[0]),'market_id':data['id'],'selection_id':d['id'] ,'level':d1[0], 'price':d1[1] ,'size':d1[2],'b_l':'LAY', 'update_time':time.strftime('%Y-%m-%dT%H:%M:%S')}
-                                redis_client.publish('stream_price', json.dumps(summary))
+        # while streaming_active:
+        market_books = streaming.output_queue.get()
+        logger.info(f'*** New update for {event_id} ***')
+        for market_book in market_books:
+            data = market_book.streaming_update
+            time = market_book.publish_time
+            if 'rc' in data:
+                for data_rc in data['rc']:
+                    for b_l in ['batl', 'batb']:
+                        if b_l in data_rc:
+                            market_id = data['id']
+                            selection_id = data_rc['id']
+                            summary_odds = {levels[0] : {'price': levels[1], 'size' : levels[2]} for levels in data_rc[b_l]}
+                            summary = {market_id : {selection_id: summary_odds}}
+                            summary = data_rc | {'selection_id': data_rc['id'] ,'market_id': data['id'], 'update_time': time.strftime('%Y-%m-%dT%H:%M:%S')}
+                            redis_client.publish('stream_price', json.dumps(summary))
 
-                        if 'batb' in d:
-                            for d2 in d['batb']:
-                                summary = {'id':str(data['id']) + '-' + str(d['id']) + '-BACK-' + str(d2[0]),'market_id':data['id'],'selection_id':d['id'] ,'level':d2[0], 'price':d2[1] ,'size':d2[2],'b_l':'BACK', 'update_time':time.strftime('%Y-%m-%dT%H:%M:%S')}
-                                redis_client.publish('stream_price', json.dumps(summary))
-            logger.info(f'End straming for market_books {event_id}')
+                if counter == 0:
+                    with open('streaming/price_sample.json', 'w') as json_file:
+                        json.dump(data, json_file, indent=4, default=datetime_serializer)
+                    counter+=1
+
     except Exception as e:
-        logger.info(f"Error while streaming: {e}")
+        logger.error(f"Error while streaming: {e}")
         pass
 
     logger.info(f"Streaming stopped for event_id: {event_id}")
     streaming.stop()
-
-def listen_for_event_id():
-    """Listen to Redis for new event_id and manage the stream."""
-    global current_event_id, streaming_active
-
-    pubsub = redis_client.pubsub()
-    pubsub.subscribe('event_control')
-    counter = 0
-
-    for message in pubsub.listen():
-        if message['type'] == 'message':
-            new_event_id = message['data'].decode('utf-8')
-            logger.info(f"Received new event_id: {new_event_id}")
-            logger.info(f"new event id {new_event_id}, current event id {current_event_id}")
-
-            # Stop the current stream if active
-            if current_event_id != new_event_id:
-                streaming_active = False
-                logger.info(f"Streaming now False")
-                if counter > 0:
-                    thread.join()
-                logger.info(f"Thread has stopped")
-
-                # Start a new stream
-                current_event_id = new_event_id
-                logger.info(f"new event id {new_event_id}, current event id {current_event_id}")
-                if current_event_id != 'Na':
-                    thread = Thread(target=stream_price, args=(current_event_id,))
-                    thread.start()
-                    counter+=1
+    logger.info(f'*** Stream stopped for {event_id} ***')
 
 
-if __name__ == "__main__":
-    # Start listening for event_id updates
-    Thread(target=listen_for_event_id).start()
+logger.info(f"Start listening for Event ID")
+for message in pubsub.listen():
+    if message['type'] == 'message':
+        new_event_id = message['data'].decode('utf-8')
+        logger.info(f"Received new event_id: {new_event_id}\nCurrent event_id {current_event_id}")
+
+        # Stop the current stream if active
+        if current_event_id != new_event_id:
+            streaming_active = False
+            logger.info(f"Streaming active:{streaming_active}")
+            if counter > 0:
+                process.terminate()
+                process.join()
+
+                # thread.join()
+                logger.info(f"Thread finished")
+
+            # Start a new stream
+            current_event_id = new_event_id
+            if current_event_id != 'Na':
+                logger.info(f"Start Streaming thread for {current_event_id}")
+                process = multiprocessing.Process(target=stream_price, args=(current_event_id,))
+                process.start()
+
+                # thread = Thread(target=stream_price, args=(current_event_id,))
+                # thread.start()
+                counter+=1
