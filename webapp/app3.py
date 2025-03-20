@@ -32,11 +32,11 @@ app.secret_key = 'Pb37TLHgFsrI3XVg'  # Required for session security
 app.config["REDIS_URL"] = "redis://redis:6379"  # Update this if using a remote Redis server
 app.config["SESSION_COOKIE_SECURE"] = True  # Only allow HTTPS
 app.config["SESSION_COOKIE_SAMESITE"] = "Strict"  # Prevent cross-site request attacks
-app.config["SESSION_PERMANENT"] = False
+app.config["SESSION_PERMANENT"] = True
 app.config["SESSION_USE_SIGNER"] = True  # Prevent tampering
 app.config["SESSION_KEY_PREFIX"] = "betfair:"
-app.config["SESSION_REDIS"] = redis.StrictRedis(host="localhost", port=6379, db=0)
-app.config["SESSION_TYPE"] = "filesystem"
+app.config["SESSION_REDIS"] = redis.StrictRedis(host="redis", port=6379, db=0)
+app.config["SESSION_TYPE"] = "redis"
 
 
 app.register_blueprint(sse, url_prefix='/stream')
@@ -54,8 +54,11 @@ Thread(target=orders_listener, args=(app, redis_client), daemon=True).start()
 
 ### Flask apps
 
+
+
 @app.route("/", methods=["GET", "POST"])
 def login():
+    global trading 
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "").strip()
@@ -79,6 +82,8 @@ def login():
                 session["pword"] = password
                 session["session_token"] = trading.session_token
 
+                logger.info(f'username: {username}\n app_key: {app_key}')
+
                 pwd_file_path = '/data/betfair_token.txt'
                 key_file_path = '/data/betfair_token.key'
 
@@ -97,6 +102,7 @@ def login():
                 flash("Login successful!", "success")
                 return redirect(url_for("eventList"))
         except Exception as e:
+            print(f"Login failed: {str(e)}")
             flash(f"Login failed: {str(e)}", "danger")
 
     return render_template("login.html")
@@ -110,8 +116,14 @@ def eventList():
         return redirect(url_for("login"))
 
     flash("Login successful!", "success")
-    trading = betfairlightweight.APIClient(session["username"], 'test', app_key=session["app_key"], certs='/certs')
-    trading.session_token = session["session_token"]  # Restore session token
+    username = session.get('username', 'No name found')
+    app_key = session.get('app_key', 'No app key found')
+    session_token = session.get('session_token', 'No session token found')
+
+    logger.info(f'username: {username}\n app_key: {app_key}\n session_token: {session_token}')
+    
+    # trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
+    # trading.session_token = session_token  # Restore session token
 
 
     logger.info('Load homepage')
@@ -125,12 +137,19 @@ def eventList():
 
 @app.route('/event/<int:event_id>')
 def event_detail(event_id):
-    if "session_token" not in session:
-        flash("You must log in first!", "warning")
-        return redirect(url_for("login"))
+    global trading
+    # if "session_token" not in session:
+    #     flash("You must log in first!", "warning")
+    #     return redirect(url_for("login"))
+
+    username = session.get('username', 'No name found')
+    app_key = session.get('app_key', 'No app key found')
+    session_token = session.get('session_token', 'No session token found')
+
+    logger.info(f'username: {username}\n app_key: {app_key}\n session_token: {session_token}')
     
-    trading = betfairlightweight.APIClient(session["username"], 'test', app_key=session["app_key"], certs='/certs')
-    trading.session_token = session["session_token"]  # Restore session token
+    # trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
+    # trading.session_token = session_token  # Restore session token
     
     logger.info(f'Load Event Page. Event ID {event_id}')
     redis_client.publish('event_control', str(event_id))  # Publish to Redis
@@ -201,8 +220,15 @@ def get_prices2():
 # Process orders
 @app.route('/place_orders', methods=["POST"])
 def place_orders():
-    trading = betfairlightweight.APIClient(session["username"], 'test', app_key=session["app_key"], certs='/certs')
-    trading.session_token = session["session_token"]  # Restore session token
+    global trading
+    username = session.get('username', 'No name found')
+    app_key = session.get('app_key', 'No app key found')
+    session_token = session.get('session_token', 'No session token found')
+
+    logger.info(f'username: {username}\n app_key: {app_key}\n session_token: {session_token}')
+    
+    # trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
+    # trading.session_token = session_token  # Restore session token
 
     result_queue = queue.Queue()
     threads = []

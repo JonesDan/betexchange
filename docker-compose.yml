@@ -1,6 +1,7 @@
 ---
 services:
   app:
+    container_name: app
     build:
       context: .
     volumes:
@@ -13,7 +14,7 @@ services:
       BF_USER: ${BF_USER}
       BF_PWD: ${BF_PWD}
       BF_API_KEY: ${BF_API_KEY}
-    command: python webapp/app3.py
+    command: sh -c "cd webapp && gunicorn -w 4 -b 0.0.0.0:5000 app:app"
     depends_on:
       - redis
       - streaming_service
@@ -51,13 +52,39 @@ services:
     networks:
       - app-network
     depends_on:
-      - redis
+      - app
     command: python streaming/stream_orders.py
 
   redis:
     image: redis:latest
     networks:
       - app-network
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx_proxy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf/:/etc/nginx/conf.d/:ro
+      - ./certbot/www:/var/www/certbot/:ro
+      # - ./certbot/conf:/etc/letsencrypt
+    depends_on:
+      - app
+    networks:
+      - app-network
+
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - ./certbot/www/:/var/www/certbot/:rw
+      # - ./certbot/conf:/etc/letsencrypt
+    networks:
+      - app-network
+    # entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;'"
 
 
 networks:

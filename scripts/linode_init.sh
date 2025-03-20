@@ -19,4 +19,4 @@ sudo systemctl enable docker
 
 # start containers
 cd /opt/app
-docker-compose up -d
+# docker-compose up -d

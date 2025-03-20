@@ -64,6 +64,10 @@ resource "linode_instance_config" "my-config" {
     destination = "/opt/app" 
   }
 
+  provisioner "file" {
+    source      = "nginx"
+    destination = "/opt/app" 
+  }
 
   provisioner "file" {
     source      = ".env"
@@ -143,11 +147,11 @@ resource "linode_firewall" "betexchange_firewall" {
     ipv6     = ["::/0"]
   }
 
-   inbound {
+  inbound {
     label    = "allow-web-traffic"
     action   = "ACCEPT"
     protocol = "TCP"
-    ports    = "5000"
+    ports    = "443"
     ipv4     = ["0.0.0.0/0"]
     # ipv6     = ["::/0"]
   }
@@ -156,7 +160,25 @@ resource "linode_firewall" "betexchange_firewall" {
     label    = "allow-web-traffic"
     action   = "ACCEPT"
     protocol = "TCP"
-    ports    = "5000"
+    ports    = "443"
+    ipv4     = ["0.0.0.0/0"]
+    # ipv6     = ["::/0"]
+  }
+
+  inbound {
+    label    = "allow-web-traffic"
+    action   = "ACCEPT"
+    protocol = "TCP"
+    ports    = "80"
+    ipv4     = ["0.0.0.0/0"]
+    # ipv6     = ["::/0"]
+  }
+
+  outbound {
+    label    = "allow-web-traffic"
+    action   = "ACCEPT"
+    protocol = "TCP"
+    ports    = "80"
     ipv4     = ["0.0.0.0/0"]
     # ipv6     = ["::/0"]
   }
