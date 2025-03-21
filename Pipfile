@@ -15,6 +15,7 @@ docker = "*"
 flask-session = "*"
 cryptography = "*"
 gunicorn = "*"
+gevent = "*"
 
 [dev-packages]
 

@@ -58,7 +58,7 @@ Thread(target=orders_listener, args=(app, redis_client), daemon=True).start()
 
 @app.route("/", methods=["GET", "POST"])
 def login():
-    global trading 
+    # global trading 
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "").strip()
@@ -110,7 +110,7 @@ def login():
 # Home - pick events
 @app.route('/eventList')
 def eventList():
-    global trading
+    # global trading
     if "session_token" not in session:
         flash("You must log in first!", "warning")
         return redirect(url_for("login"))
@@ -122,8 +122,8 @@ def eventList():
 
     logger.info(f'username: {username}\n app_key: {app_key}\n session_token: {session_token}')
     
-    # trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
-    # trading.session_token = session_token  # Restore session token
+    trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
+    trading.session_token = session_token  # Restore session token
 
 
     logger.info('Load homepage')
@@ -137,10 +137,10 @@ def eventList():
 
 @app.route('/event/<int:event_id>')
 def event_detail(event_id):
-    global trading
-    # if "session_token" not in session:
-    #     flash("You must log in first!", "warning")
-    #     return redirect(url_for("login"))
+    # global trading
+    if "session_token" not in session:
+        flash("You must log in first!", "warning")
+        return redirect(url_for("login"))
 
     username = session.get('username', 'No name found')
     app_key = session.get('app_key', 'No app key found')
@@ -148,8 +148,8 @@ def event_detail(event_id):
 
     logger.info(f'username: {username}\n app_key: {app_key}\n session_token: {session_token}')
     
-    # trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
-    # trading.session_token = session_token  # Restore session token
+    trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
+    trading.session_token = session_token  # Restore session token
     
     logger.info(f'Load Event Page. Event ID {event_id}')
     redis_client.publish('event_control', str(event_id))  # Publish to Redis
@@ -212,7 +212,6 @@ def get_prices2():
 
     updatetime = max(updatetimeList) if len(updatetimeList) > 0 else ""
 
-    logger.info(f'summary {summary}')
     return jsonify({'selected_markets': summary, 'update_time': updatetime})
 
 # Pull Market data
@@ -220,15 +219,15 @@ def get_prices2():
 # Process orders
 @app.route('/place_orders', methods=["POST"])
 def place_orders():
-    global trading
+    # global trading
     username = session.get('username', 'No name found')
     app_key = session.get('app_key', 'No app key found')
     session_token = session.get('session_token', 'No session token found')
 
     logger.info(f'username: {username}\n app_key: {app_key}\n session_token: {session_token}')
     
-    # trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
-    # trading.session_token = session_token  # Restore session token
+    trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
+    trading.session_token = session_token  # Restore session token
 
     result_queue = queue.Queue()
     threads = []

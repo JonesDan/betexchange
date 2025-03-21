@@ -35,7 +35,7 @@ def func_list_market_catalogue(trading, event_id):
         for x in market.runners:
             market_catalogue_list.append({'market_name':market_name, 'market_id': market_id, 'start_time': start_time, 'selection_name': x.runner_name, 'selection_id': x.selection_id, 'event': event, 'total_matched': total_matched, 'desc': desc})
 
-    with open('webapp/sample/list_market_catalogue.json', 'w') as json_file:
+    with open('sample/list_market_catalogue.json', 'w') as json_file:
         json.dump(market_catalogue_list, json_file, indent=4, default=datetime_serializer)
 
     return(market_catalogue_list)

@@ -15,14 +15,14 @@ def datetime_serializer(obj):
 def init_logger(filename):
     # Logging
     logging.basicConfig(level=logging.INFO
-                        , filename=f'webapp/{filename}.log'
+                        , filename=f'{filename}.log'
                         , format='%(asctime)s - %(levelname)s - %(message)s'
                         )
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
 
     # Create file handler
-    file_handler = logging.FileHandler(f'webapp/{filename}.log')
+    file_handler = logging.FileHandler(f'{filename}.log')
     file_handler.setLevel(logging.DEBUG)
 
     # Create console handler
