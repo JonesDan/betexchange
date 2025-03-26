@@ -16,7 +16,7 @@ import betfairlightweight
 import logging
 import collections
 from datetime import datetime
-from utils import init_logger, bf_login, prices_listener, orders_listener
+from utils import init_logger, bf_login, prices_listener, orders_listener, clear_shelve
 import shelve
 import queue
 from cryptography.fernet import Fernet
@@ -53,8 +53,6 @@ Thread(target=orders_listener, args=(app, redis_client), daemon=True).start()
 # Redis - listening to order stream
 
 ### Flask apps
-
-
 
 @app.route("/", methods=["GET", "POST"])
 def login():
@@ -137,6 +135,7 @@ def eventList():
 
 @app.route('/event/<int:event_id>')
 def event_detail(event_id):
+    clear_shelve()
     # global trading
     if "session_token" not in session:
         flash("You must log in first!", "warning")

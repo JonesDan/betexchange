@@ -76,9 +76,19 @@ function addMarketToTable(market_id) {
                     <tr id=${market.id} class="${rowColor}">
                         <td class="fs-6">${market.market_name}</td>
                         <td class="fs-6">${market.selection_name}</td>
+                        <td>
+                            <select>
+                                <option value=""></option>
+                                <option value="A">A</option>
+                                <option value="B">B</option>
+                            </select>
+                        </td>
                         <td class="fs-6">${market.b_l}</td>
                         <td id="size-${market.id}" class="fs-6"><input type="number" class="form-control form-control-sm  w-100" min="0"></td>
                         <td id="sizeMin-${market.id}" class="fs-6"><input type="number" class="form-control form-control-sm  w-100" min="0"></td>
+                        <td id="min-price-${market.id}" class="min-price fs-6">
+                            <input type="number" class="form-control form-control-sm  w-100" min="0" value="${market.priceList.at(0)}" oninput="syncSlider(this)"
+                            >
                         <td>
                             <canvas class="chart-container" id="chart-${market.id}" height="50"></canvas>
                             <span>
@@ -92,16 +102,6 @@ function addMarketToTable(market_id) {
                                     oninput="updatePrice(this)"
                                     >
                             </span>
-                        </td>
-                        <td id="min-price-${market.id}" class="min-price fs-6">
-                            <input type="number" class="form-control form-control-sm  w-100" min="0" value="${market.priceList.at(0)}" oninput="syncSlider(this)"
-                            >
-                        <td>
-                            <select>
-                                <option value=""></option>
-                                <option value="z">z</option>
-                                <option value="x">x</option>
-                            </select>
                         </td>
                     </tr>
                 `);
@@ -313,6 +313,14 @@ function checkGamepad() {
     }, 100); // Check every 100ms
 };
 
+function triggerVibration() {
+    if ("vibrate" in navigator) {  // Check if vibration is supported
+        navigator.vibrate(200);  // Vibrate for 200ms
+    } else {
+        console.log("Vibration API not supported");
+    }
+}
+
 // document.addEventListener("keydown", function (event) {
 document.addEventListener("gamepadconnected", function (event) {
     setInterval(() => {
@@ -322,9 +330,14 @@ document.addEventListener("gamepadconnected", function (event) {
         for (let gamepad of gamepads) {
         if (!gamepad) continue;
 
-            if (gamepad.buttons[0].pressed) { // Detect "Z" keypress
+            if (gamepad.buttons[0].pressed) { // Detect "A" keypress
                 console.log("A button pressed!");
-                place_orders("z");
+                place_orders("A");
+            }
+
+            if (gamepad.buttons[1].pressed) { // Detect "B" keypress
+                console.log("B button pressed!");
+                place_orders("B");
             }
         }
 
@@ -337,6 +350,7 @@ document.addEventListener("gamepadconnected", function (event) {
 
 function place_orders(shortcut) {
 
+    triggerVibration();
     order_details = getSelectedRows(shortcut)
 
     console.log(order_details);
@@ -467,10 +481,13 @@ function updateTable(data) {
         <td class="fs-6">${data.update_time}</td>
     `;
     } else {
+        
         // Create new row if it doesn't exist
         // Create new row if it doesn't exist
         row = table.insertRow();
         row.id = `row-${data.order_id}`;
+        let rowColor = data.b_l === "BACK" ? "table-info" : "table-warning";
+        row.classList.add(`${rowColor}`);
 
         row.innerHTML = `
         <td class="fs-6">${data.market_id}</td>
@@ -487,3 +504,68 @@ function updateTable(data) {
                     `;
     }
 }
+
+const eventSource_orders_agg = new EventSource('/stream?channel=orders_agg');
+
+// Listen for 'update' events
+eventSource_orders.addEventListener('update', function(event) {
+    const data = JSON.parse(event.data); // Parse incoming JSON data
+    updateTable_agg(data);
+});
+
+// Function to update or insert a row in the table
+function updateTable_agg(data) {
+    let table = document.getElementById("order_table_agg");
+
+    // Clear existing rows (optional, to prevent duplicates)
+    table.innerHTML = `<tr>    
+                            <th>Market Name</th>
+                            <th>Selection</th>
+                            <th>Total Back Stake</th>
+                            <th>Total Back Winnings</th>
+                            <th>Total Back Profit</th>
+                            <th>Total Lay Stake</th>
+                            <th>Total Lay Liability</th>
+                            <th>Total Lay Payout</th>
+                        </tr>`
+                        ;
+
+    // Loop through data and insert rows
+    data.forEach(row => {
+        let newRow = table.insertRow();
+        
+        // Insert cells and populate with data
+        let market_name = newRow.insertCell(0);
+        let selection_name = newRow.insertCell(1);
+        let back_price = newRow.insertCell(2);
+        let back_stake = newRow.insertCell(3);
+        let back_profit = newRow.insertCell(4);
+        let lay_stake = newRow.insertCell(5);
+        let lay_liability = newRow.insertCell(6);
+        let lay_payout = newRow.insertCell(7);
+
+        market_name.textContent = row.market_name;
+        selection_name.textContent = row.selection_name;
+        back_price.textContent = row.bk_price;
+        back_stake.textContent = row.bk_stake;
+        back_profit.textContent = row.bk_profit;
+        lay_stake.textContent = row.lay_stake;
+        lay_liability.textContent = row.lay_liability;
+        lay_payout.textContent = row.lay_payout;
+    });
+}
+
+function stopSSE() {
+    if (eventSource) {
+        eventSource.close();
+        eventSource = null; // Clear reference
+    }
+
+    if (eventSource_orders) {
+        eventSource_orders.close();
+        eventSource_orders= null; // Clear reference
+    }
+}
+
+// Example: Stop SSE when switching pages
+window.addEventListener("beforeunload", stopSSE);

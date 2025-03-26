@@ -16,6 +16,8 @@ flask-session = "*"
 cryptography = "*"
 gunicorn = "*"
 gevent = "*"
+pandas = "*"
+numpy = "*"
 
 [dev-packages]
 

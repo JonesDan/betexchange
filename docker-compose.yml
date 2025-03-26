@@ -16,7 +16,7 @@ services:
       BF_USER: ${BF_USER}
       BF_PWD: ${BF_PWD}
       BF_API_KEY: ${BF_API_KEY}
-    command: sh -c "gunicorn -k gevent -w 1 -b 0.0.0.0:5000 app3:app"
+    command: gunicorn -k gevent -w 1 -b 0.0.0.0:5000 app3:app
     depends_on:
       - redis
       - streaming_service
@@ -85,7 +85,7 @@ services:
       - ./certbot/var-lib-letsencrypt:/var/lib/letsencrypt
       - ./certbot/var-log-letsencrypt:/var/log/letsencrypt
       - ./certbot/www/:/var/www/certbot/
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;'"
+    # entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;'"
 
 
 networks:

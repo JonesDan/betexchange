@@ -20,3 +20,4 @@ sudo systemctl enable docker
 # start containers
 cd /opt/app
 # docker-compose up -d
+# docker-compose run certbot certonly --webroot --webroot-path=/var/www/certbot --email dj@gmail.com --agree-tos --no-eff-email -d betexchange.ddnsgeek.com -d www.betexchange.ddnsgeek.com
