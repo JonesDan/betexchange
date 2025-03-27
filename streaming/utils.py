@@ -7,6 +7,7 @@ from betfairlightweight import StreamListener
 from betfairlightweight import BetfairError
 import os
 from cryptography.fernet import Fernet
+import time
 
 
 def init_logger(filename):
@@ -81,11 +82,22 @@ class Streaming(threading.Thread):
         if self.stream:
             self.stream.stop()
 
+def wait_for_file(file_path, check_interval=1):
+    """Waits for a file to be populated before proceeding."""
+    while not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+        print(f"Waiting for file {file_path} to be populated...")
+        time.sleep(check_interval)  # Wait before checking again
+
+    print(f"File {file_path} is ready!")
+    return True  # Continue execution
+
 def bf_login(logger):
     # create trading instance (app key must be activated for streaming)
+
+    # wait for password files to be populated
+    wait_for_file('/data/betfair_token.key', check_interval=1)
     try:
         app_key = os.environ['BF_API_KEY']
-        username = os.environ['BF_USER']
         with open('/data/betfair_token.key', "rb") as f:
             key = f.read().strip()
 
@@ -93,7 +105,10 @@ def bf_login(logger):
         with open('/data/betfair_token.txt', "rb") as file:
             encrypted_password = file.read().strip()  # Remove any leading/trailing whitespace
 
+        with open('/data/betfair_username.txt', "r") as f:
+            username = f.read().strip()
         password = cipher.decrypt(encrypted_password).decode()
+        
         logger.info('username=\n'+username)
         trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs='/certs')
         # trading.session_token = token
@@ -105,3 +120,4 @@ def bf_login(logger):
         pass
 
     return trading
+    

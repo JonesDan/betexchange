@@ -95,16 +95,14 @@ def orders_listener(app, redis_client):
                     update_data = json.loads(update_data)
 
                     with shelve.open('market_catalogue.db') as cache:
-                        market_catalogue = dict(cache)
+                        market_catalogue = dict(cache['market_catalogue'])
 
-                    market_name = market_catalogue[update_data['market_id']]['market_name']
+                    market_name = market_catalogue[update_data['market_id']][0]['market_name']
+                    selection_name = update_data['selection_id']
                     for selection in market_catalogue[update_data['market_id']]:
                         if update_data['selection_id'] == selection['selection_id']:
                             selection_name = selection['selection_name']
-                        else:
-                            selection_name = update_data['selection_id']
 
-                    id = update_data['id']
                     data = {'market_name': market_name,
                             'selection_name':  selection_name,
                             'order_id':  update_data['id'],
@@ -117,7 +115,10 @@ def orders_listener(app, redis_client):
                             'lapsed': update_data['sl'],
                             'cancelled': update_data['sc'],
                             'voided': update_data['sv'],
+                            'id': update_data['id']
                             }
+                    
+                    logger.info(data)
 
                     sse.publish(data, type='update', channel='orders')  
 
@@ -125,7 +126,7 @@ def orders_listener(app, redis_client):
                         db.setdefault("my_list", []).append(data)
                         summary = db['my_list']
                     
-                    df = pd.Dataframe(summary)
+                    df = pd.DataFrame(summary)
 
                     df['price'] = df['price'].astype('float')
                     df['stake'] = df['size'].astype('float')
@@ -134,11 +135,14 @@ def orders_listener(app, redis_client):
                     df['bk_profit'] = np.where(df['b_l'] == 'B', df['price'] * df['stake'], 0)
                     df['lay_stake'] = np.where(df['b_l'] == 'L', df['stake'], 0)
                     df['lay_liability'] = np.where(df['b_l'] == 'L', (df['price']-1) * df['stake'], 0)
-                    df['lay_payout'] = np.where(df['b_l'] == 'L', (df['stake'], 0)
+                    df['lay_payout'] = np.where(df['b_l'] == 'L', df['stake'], 0)
 
-                    df_summary = df.loc[df.id = '']['market_name','selection_name','bk_price','bk_stake','bf_profit','lay_stake','lay_liability','lay_payout'].groupby(['market_name','selection_name']).sum().reset_index()
+                    df_summary = df[['market_name','selection_name','bk_price','bk_stake','bk_profit','lay_stake','lay_liability','lay_payout']].groupby(['market_name','selection_name']).sum().reset_index()
 
-                    result_list = df_summary.to_dict(orient='records')                    
+                    df_summary[['bk_price','bk_stake','bk_profit','lay_stake','lay_liability','lay_payout']] = df_summary[['bk_price','bk_stake','bk_profit','lay_stake','lay_liability','lay_payout']].applymap(lambda x: f"{x:.2f}")
+
+                    result_list = df_summary.to_dict(orient='records')
+                    logger.info(result_list)                    
 
                     sse.publish(result_list, type='update', channel='orders_agg')  
                     
@@ -148,7 +152,7 @@ def orders_listener(app, redis_client):
 
 
 def clear_shelve():
-    for filename in ['market_catalogue.db', 'price_cache.db' ,'orders.db']
+    for filename in ['market_catalogue.db', 'price_cache.db' ,'orders.db']:
         with shelve.open(filename) as db:
             db.clear()
             

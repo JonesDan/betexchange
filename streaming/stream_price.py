@@ -63,27 +63,27 @@ def stream_price(event_id):
 
     try:
         # check for updates in output queue
-        # while streaming_active:
-        market_books = streaming.output_queue.get()
-        logger.info(f'*** New update for {event_id} ***')
-        for market_book in market_books:
-            data = market_book.streaming_update
-            time = market_book.publish_time
-            if 'rc' in data:
-                for data_rc in data['rc']:
-                    for b_l in ['batl', 'batb']:
-                        if b_l in data_rc:
-                            market_id = data['id']
-                            selection_id = data_rc['id']
-                            summary_odds = {levels[0] : {'price': levels[1], 'size' : levels[2]} for levels in data_rc[b_l]}
-                            summary = {market_id : {selection_id: summary_odds}}
-                            summary = data_rc | {'selection_id': data_rc['id'] ,'market_id': data['id'], 'update_time': time.strftime('%Y-%m-%dT%H:%M:%S')}
-                            redis_client.publish('stream_price', json.dumps(summary))
+        while True:
+            market_books = streaming.output_queue.get()
+            logger.info(f'*** New update for {event_id} ***')
+            for market_book in market_books:
+                data = market_book.streaming_update
+                time = market_book.publish_time
+                if 'rc' in data:
+                    for data_rc in data['rc']:
+                        for b_l in ['batl', 'batb']:
+                            if b_l in data_rc:
+                                market_id = data['id']
+                                selection_id = data_rc['id']
+                                summary_odds = {levels[0] : {'price': levels[1], 'size' : levels[2]} for levels in data_rc[b_l]}
+                                summary = {market_id : {selection_id: summary_odds}}
+                                summary = data_rc | {'selection_id': data_rc['id'] ,'market_id': data['id'], 'update_time': time.strftime('%Y-%m-%dT%H:%M:%S')}
+                                redis_client.publish('stream_price', json.dumps(summary))
 
-                if counter == 0:
-                    with open('streaming/price_sample.json', 'w') as json_file:
-                        json.dump(data, json_file, indent=4, default=datetime_serializer)
-                    counter+=1
+                    if counter == 0:
+                        with open('streaming/price_sample.json', 'w') as json_file:
+                            json.dump(data, json_file, indent=4, default=datetime_serializer)
+                        counter+=1
 
     except Exception as e:
         logger.error(f"Error while streaming: {e}")

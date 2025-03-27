@@ -21,6 +21,7 @@ import shelve
 import queue
 from cryptography.fernet import Fernet
 import ssl
+import time
 
 # Logging
 logger = init_logger('app')
@@ -40,6 +41,8 @@ app.config["SESSION_TYPE"] = "redis"
 
 
 app.register_blueprint(sse, url_prefix='/stream')
+
+last_execution_time = 0  # Store the last execution timestamp
 
 Session(app)  # Initialize Flask-Session
 
@@ -84,6 +87,7 @@ def login():
 
                 pwd_file_path = '/data/betfair_token.txt'
                 key_file_path = '/data/betfair_token.key'
+                user_file_path = '/data/betfair_username.txt'
 
                 key = Fernet.generate_key()
                 cipher = Fernet(key)
@@ -94,6 +98,10 @@ def login():
 
                 with open(key_file_path, "wb") as file:
                     file.write(key)
+
+                with open(user_file_path, "w") as file:
+                    file.write(username)
+
 
                 print("Token updated securely.")
                 session["app_key"] = app_key
@@ -189,7 +197,7 @@ def get_prices2():
 
     with shelve.open('market_catalogue.db') as cache:
         selections = dict(cache['market_catalogue'])
-    logger.info(f'selected market ids {selections}')
+
     summary = []
     updatetimeList = []
     with shelve.open('price_cache.db') as cache:
@@ -200,7 +208,7 @@ def get_prices2():
         for b_l in ['batb','batl']:
             selection_id = s['selection_id']
             id = f"{market_id}-{selection_id}-{b_l}"
-            logger.info(f'id {id}')
+
             priceList = [db[f"{id}-{level}"]['price'] if f"{id}-{level}" in db else 0 for level in range(10)] + ['Custom']
             sizeList = [db[f"{id}-{level}"]['size'] if f"{id}-{level}" in db else 0 for level in range(10)] + [0]
             updatetimeList.append(max([db[f"{id}-{level}"]['update_time'] if f"{id}-{level}" in db else '0' for level in range(10)]))
@@ -211,6 +219,7 @@ def get_prices2():
 
     updatetime = max(updatetimeList) if len(updatetimeList) > 0 else ""
 
+    logger.info(f'data for betting table {summary}')
     return jsonify({'selected_markets': summary, 'update_time': updatetime})
 
 # Pull Market data
@@ -218,12 +227,18 @@ def get_prices2():
 # Process orders
 @app.route('/place_orders', methods=["POST"])
 def place_orders():
+    global last_execution_time
+    current_time = time.time()
+
+    if current_time - last_execution_time >= 1:
+        last_execution_time = current_time
+        return jsonify({"message": f"order already placed"})
+
+
     # global trading
     username = session.get('username', 'No name found')
     app_key = session.get('app_key', 'No app key found')
     session_token = session.get('session_token', 'No session token found')
-
-    logger.info(f'username: {username}\n app_key: {app_key}\n session_token: {session_token}')
     
     trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
     trading.session_token = session_token  # Restore session token

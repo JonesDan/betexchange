@@ -302,7 +302,12 @@ function checkGamepad() {
 
             if (gamepad.buttons[0].pressed) { // Detect "Z" keypress
                 console.log("A button pressed!");
-                place_orders("z");
+                place_orders("A");
+            }
+
+            if (gamepad.buttons[1].pressed) { // Detect "B" keypress
+                console.log("B button pressed!");
+                place_orders("B");
             }
         }
 
@@ -321,32 +326,32 @@ function triggerVibration() {
     }
 }
 
-// document.addEventListener("keydown", function (event) {
-document.addEventListener("gamepadconnected", function (event) {
-    setInterval(() => {
-        let gamepads = navigator.getGamepads();
-        if (!gamepads) return;
+// // document.addEventListener("keydown", function (event) {
+// document.addEventListener("gamepadconnected", function (event) {
+//     setInterval(() => {
+//         let gamepads = navigator.getGamepads();
+//         if (!gamepads) return;
         
-        for (let gamepad of gamepads) {
-        if (!gamepad) continue;
+//         for (let gamepad of gamepads) {
+//         if (!gamepad) continue;
 
-            if (gamepad.buttons[0].pressed) { // Detect "A" keypress
-                console.log("A button pressed!");
-                place_orders("A");
-            }
+//             if (gamepad.buttons[0].pressed) { // Detect "A" keypress
+//                 console.log("A button pressed!");
+//                 place_orders("A");
+//             }
 
-            if (gamepad.buttons[1].pressed) { // Detect "B" keypress
-                console.log("B button pressed!");
-                place_orders("B");
-            }
-        }
+//             if (gamepad.buttons[1].pressed) { // Detect "B" keypress
+//                 console.log("B button pressed!");
+//                 place_orders("B");
+//             }
+//         }
 
-        // if (event.key.toLowerCase() === "z") { // Detect "Z" keypress
-        //     place_orders("z");
-        // }
+//         // if (event.key.toLowerCase() === "z") { // Detect "Z" keypress
+//         //     place_orders("z");
+//         // }
 
-    }, 100); // Check every 100ms
-});
+//     }, 100); // Check every 100ms
+// });
 
 function place_orders(shortcut) {
 
@@ -381,9 +386,9 @@ function getSelectedRows(shortcut) {
     document.querySelectorAll("tbody tr").forEach(row => {
         let rowId = row.id;
         if (rowId) {
-            let selectValue = row.cells[7].querySelector("select").value;
-            let sizeValue = row.cells[3].querySelector("input").value;
-            let sizeMinValue = row.cells[4].querySelector("input").value;
+            let selectValue = row.cells[2].querySelector("select").value;
+            let sizeValue = row.cells[4].querySelector("input").value;
+            let sizeMinValue = row.cells[5].querySelector("input").value;
             let priceValue = row.cells[6].querySelector("input").value;
     
             console.log(selectValue, sizeValue, sizeMinValue, priceValue)
@@ -468,8 +473,8 @@ function updateTable(data) {
     if (row) {
         // Update existing row
         row.innerHTML = `
-        <td class="fs-6">${data.market_id}</td>
-        <td class="fs-6">${data.selection_id}</td>
+        <td class="fs-6">${data.market_name}</td>
+        <td class="fs-6">${data.selection_name}</td>
         <td class="fs-6">${data.b_l}</td>
         <td class="fs-6">${data.price}</td>
         <td class="fs-6">${data.size}</td>
@@ -486,12 +491,12 @@ function updateTable(data) {
         // Create new row if it doesn't exist
         row = table.insertRow();
         row.id = `row-${data.order_id}`;
-        let rowColor = data.b_l === "BACK" ? "table-info" : "table-warning";
+        let rowColor = data.b_l === "B" ? "table-info" : "table-warning";
         row.classList.add(`${rowColor}`);
 
         row.innerHTML = `
-        <td class="fs-6">${data.market_id}</td>
-        <td class="fs-6">${data.selection_id}</td>
+        <td class="fs-6">${data.market_name}</td>
+        <td class="fs-6">${data.selection_name}</td>
         <td class="fs-6">${data.b_l}</td>
         <td class="fs-6">${data.price}</td>
         <td class="fs-6">${data.size}</td>
@@ -508,50 +513,20 @@ function updateTable(data) {
 const eventSource_orders_agg = new EventSource('/stream?channel=orders_agg');
 
 // Listen for 'update' events
-eventSource_orders.addEventListener('update', function(event) {
+eventSource_orders_agg.addEventListener('update', function(event) {
     const data = JSON.parse(event.data); // Parse incoming JSON data
     updateTable_agg(data);
 });
 
 // Function to update or insert a row in the table
 function updateTable_agg(data) {
-    let table = document.getElementById("order_table_agg");
+    let tableBody = document.getElementById("orders_table_agg");
+    tableBody.innerHTML = "";  // Clear existing rows
 
-    // Clear existing rows (optional, to prevent duplicates)
-    table.innerHTML = `<tr>    
-                            <th>Market Name</th>
-                            <th>Selection</th>
-                            <th>Total Back Stake</th>
-                            <th>Total Back Winnings</th>
-                            <th>Total Back Profit</th>
-                            <th>Total Lay Stake</th>
-                            <th>Total Lay Liability</th>
-                            <th>Total Lay Payout</th>
-                        </tr>`
-                        ;
-
-    // Loop through data and insert rows
     data.forEach(row => {
-        let newRow = table.insertRow();
-        
-        // Insert cells and populate with data
-        let market_name = newRow.insertCell(0);
-        let selection_name = newRow.insertCell(1);
-        let back_price = newRow.insertCell(2);
-        let back_stake = newRow.insertCell(3);
-        let back_profit = newRow.insertCell(4);
-        let lay_stake = newRow.insertCell(5);
-        let lay_liability = newRow.insertCell(6);
-        let lay_payout = newRow.insertCell(7);
-
-        market_name.textContent = row.market_name;
-        selection_name.textContent = row.selection_name;
-        back_price.textContent = row.bk_price;
-        back_stake.textContent = row.bk_stake;
-        back_profit.textContent = row.bk_profit;
-        lay_stake.textContent = row.lay_stake;
-        lay_liability.textContent = row.lay_liability;
-        lay_payout.textContent = row.lay_payout;
+        let tr = document.createElement("tr");
+        tr.innerHTML = `<td>${row.market_name}</td><td>${row.selection_name}</td><td class="table-info">${row.bk_price}</td><td class="table-info">${row.bk_stake}</td>><td class="table-info">${row.bk_profit}</td><td class="table-warning">${row.lay_stake}</td><td class="table-warning">${row.lay_liability}</td><td class="table-warning">${row.lay_payout}</td>`;
+        tableBody.appendChild(tr);
     });
 }
 
