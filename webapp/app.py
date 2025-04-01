@@ -1,9 +1,5 @@
-from flask import Flask, render_template, Response, jsonify, request
-from bf_api.list_events import list_events
-from bf_api.list_market_catalogue import list_market_catalogue
-from bf_api.place_orders import place_order
-# from bf_api.stream_price2 import list_market_catalogue
-from celery import Celery
+from flask import Flask, render_template, Response, jsonify, request, session, flash,redirect, url_for
+from flask_session import Session
 from flask_sse import sse
 from threading import Thread
 import redis
@@ -11,203 +7,255 @@ import json
 import pickle
 import os
 import betfairlightweight
-import logging
-import collections
 from datetime import datetime
+from utils import init_logger, bf_login, prices_listener, orders_listener, clear_shelve, place_order, list_market_catalogue, list_events
+import shelve
+import queue
+from cryptography.fernet import Fernet
+import time
 
-# setup logging
-logging.basicConfig(level=logging.INFO)  # change to DEBUG to see log all updates
-logger = logging.getLogger(__name__)
+# Logging
+logger = init_logger('app')
 
 app = Flask(__name__)
+app.secret_key = 'Pb37TLHgFsrI3XVg'  # Required for session security
 app.config["REDIS_URL"] = "redis://redis:6379"  # Update this if using a remote Redis server
-app.register_blueprint(sse, url_prefix='/stream')
+app.config["SESSION_COOKIE_SECURE"] = True  # Only allow HTTPS
+app.config["SESSION_COOKIE_SAMESITE"] = "Strict"  # Prevent cross-site request attacks
+app.config["SESSION_PERMANENT"] = True
+app.config["SESSION_USE_SIGNER"] = True  # Prevent tampering
+app.config["SESSION_KEY_PREFIX"] = "betfair:"
+app.config["SESSION_REDIS"] = redis.StrictRedis(host="redis", port=6379, db=0)
+app.config["SESSION_TYPE"] = "redis"
 
+app.register_blueprint(sse, url_prefix='/stream')
+context = os.environ[f'APP_CONTEXT']
+
+Session(app)  # Initialize Flask-Session
+
+# Redis Client
 redis_client = redis.Redis(host='redis', port=6379)
 
-# create trading instance (app key must be activated for streaming)
-app_key = os.environ['BF_API_KEY']
-username = os.environ['BF_USER']
-password = os.environ['BF_PWD']
-trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs='/certs')
+# Redis - listening to price stream
+Thread(target=prices_listener, args=(app, redis_client), daemon=True).start()
+Thread(target=orders_listener, args=(app, redis_client), daemon=True).start()
 
-# Log in to Betfair API
-trading.login()
+### Flask apps
 
-def listen_to_redis():
-    with app.app_context():
-        pubsub = redis_client.pubsub()
-        pubsub.subscribe('stream_price')
+@app.route("/", methods=["GET", "POST"])
+def login():
 
-        data_cache = {}
-        for message in pubsub.listen():
-            if message['type'] == 'message':
-                data = message['data'].decode('utf-8')
-                data = json.loads(data)
+    if request.method == "GET":
+        logger.info('Login: GET request for login page')
+        return render_template("login.html")
+    
+    if request.method == "POST":
+        # Get info from form
+        logger.info('Login: POST request from login page')
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        logger.info(f'Login: username: {username}')
 
-                market_id = data['market_id']
-                selection_id = str(data['selection_id'])
-                b_l = data['b_l']
-                level = str(data['level'])
-                price = data['price']
-                size = data['size']
-                updatetime = data['update_time']
+        # Check username and password is filled out
+        if not username or not password:
+            flash("Username and password required!", "danger")
+            return redirect(url_for("login"))
+        
+        try:
+            # Attempt betfair login
+            app_key = os.environ[f'BF_API_KEY_{context.upper()}']
+            trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs=f'/certs/{context}')
+            trading.login()
+            session['username'] = username
+            session['app_key'] = app_key
+            session['session_token'] = trading.session_token
 
-                # Ensure market_id exists
-                if market_id not in data_cache:
-                    data_cache[market_id] = {}
-                
-                if selection_id not in data_cache[market_id]:
-                    data_cache[market_id][selection_id] = {}
-                
-                if b_l not in data_cache[market_id][selection_id]:
-                    data_cache[market_id][selection_id][b_l] = {}
-                
-                if level not in data_cache[market_id][selection_id][b_l]:
-                    data_cache[market_id][selection_id][b_l][level] = {}
-                
-                data_cache[market_id][selection_id][b_l][level]['price'] = price
-                data_cache[market_id][selection_id][b_l][level]['size'] = size
-                data_cache[market_id][selection_id][b_l][level]['update_time'] = updatetime
+            pwd_file_path = '/data/betfair_token.txt'
+            key_file_path = '/data/betfair_token.key'
+            user_file_path = '/data/betfair_username.txt'
+            api_key_file_path = '/data/betfair_api_key.txt'
 
-                with open('./webapp/data_cache.pkl', 'wb') as file:
-                    pickle.dump(data_cache, file)
+            key = Fernet.generate_key()
+            cipher = Fernet(key)
+            encrypted_password = cipher.encrypt(password.encode())
 
-                sse.publish(data, type='update')
+            with open(pwd_file_path, "wb") as file:
+                file.write(encrypted_password)
+            with open(key_file_path, "wb") as file:
+                file.write(key)
+            with open(user_file_path, "w") as file:
+                file.write(username)
+            with open(api_key_file_path, "w") as file:
+                file.write(app_key)
 
-# Run the Redis listener in a background thread
-Thread(target=listen_to_redis, daemon=True).start()
+            flash(f"Login Success", "success")
+            logger.info(f'Login: Login successful')
+            return redirect(url_for("eventList"))
+        
+        except Exception as e:
+            logger.error(f'Login: {e}')
+            flash(f"Login failed: {e}", "danger")
+            return redirect(url_for("login"))
 
-@app.route('/')
-def home():
-    global trading
-    events = list_events(trading)
-    redis_client.publish('event_control', "Na")  # Publish to Redis
+@app.route('/eventList', methods=["GET"])
+def eventList():
 
-    return render_template('events.html', events=events)
+    try:
+        logger.info(f'EventList: Pull List of Events')
+        username = session.get('username', 'No name found')
+        app_key = session.get('app_key', 'No app key found')
+        session_token = session.get('session_token', 'No session token found')
+
+        trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
+        trading.session_token = session_token  # Restore session token
+
+        events = list_events(trading)
+        logger.info(f'EventList: Number of events pulled {len(events)}')
+        redis_client.publish('event_control', "Na")  # Publish to Redis
+
+        return render_template('eventList.html', events=events)
+      
+    except Exception as e:
+        logger.error(f'EventList: {e}')
+        flash(f"Error pulling events. Try logging in again", "danger")
+
+        return redirect(url_for("login"))
+
 
 @app.route('/event/<int:event_id>')
 def event_detail(event_id):
-    global trading
+    try:
+        logger.info(f'Eventdetail: Pull event detail for {event_id}')
+        # clear caches
+        clear_shelve()
+
+        # Get Sessions details
+        username = session.get('username', 'No name found')
+        app_key = session.get('app_key', 'No app key found')
+        session_token = session.get('session_token', 'No session token found')
+        
+        trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
+        trading.session_token = session_token  # Restore session token
+        
+        # Publish event id for price streaming
+        logger.info(f'Eventdetail: Publish {event_id} to redis for price stream')
+        redis_client.publish('event_control', str(event_id))  # Publish to Redis
+        
+        # Get markets and build market cache
+        market_data = list_market_catalogue(trading, event_id)
+        market_selection_ids = {}
+        market_ids_list = []
+        logger.info(f'Eventdetail: Pulled {len(market_data)} Markets')
+        for market in market_data:
+            market_id = market['market_id']
+            summary = {'selection_id': market['selection_id'], 'selection_name':market['selection_name'], 'market_name':market['market_name']}
+            # Create list of unique market ids for table
+            if market_id not in market_selection_ids:
+                market_ids_list.append({'id': market['market_id'], 'market_name': market['market_name'], 'total_matched': f"{market['total_matched']:,}"})
+
+            market_selection_ids.setdefault(market_id, []).append(summary)
+
+        with shelve.open('shelve/market_catalogue.db') as cache:
+            cache['market_catalogue'] = market_selection_ids
+
+        event_name = market_data[0]['event']
+        return render_template('event_details.html', markets=market_ids_list, event_name=event_name)\
     
-    # Find the event by name
-    market_catalogue = list_market_catalogue(trading, event_id)
-    with open('./webapp/market_catalogue.pkl', 'wb') as file:
-        pickle.dump(market_catalogue, file)
+    except Exception as e:
+        logger.error(f'Eventdetail: {e}')
+        flash(f"Error pulling event details. Try logging in again", "danger")
 
-    market_catalogue_distinct_ids = []
-    market_catalogue_distinct = []
-    for m in market_catalogue:
-        if m['market_id'] not in market_catalogue_distinct_ids:
-            market_catalogue_distinct_ids.append(m['market_id'])
-            market_catalogue_distinct.append({'id': m['market_id'], 'market_name': m['market_name']})
+        return redirect(url_for("login"))
 
-    redis_client.publish('event_control', str(event_id))  # Publish to Redis
 
-    return render_template('markets2.html', markets=market_catalogue_distinct)
+@app.route('/get_prices2', methods=["POST"])
+def get_prices2():
+    market_id = request.json.get("marketid", [])
 
-@app.route('/get-market', methods=["POST"])
-def get_event_detail():
-    selected_ids = request.json.get("selected_ids", [])
-    # Find the event by name
-    with open('./webapp/market_catalogue.pkl', 'rb') as file:
-        market_catalogue = pickle.load(file)
+    with shelve.open('shelve/market_catalogue.db') as cache:
+        selections = dict(cache['market_catalogue'])
+
+    summary = []
+    updatetimeList = []
+    with shelve.open('shelve/price_cache.db') as cache:
+        db = dict(cache)
+
+    for s in selections[str(market_id)]:
+        logger.info(f'selection {s}')
+        for b_l in ['batb','batl']:
+            selection_id = s['selection_id']
+            id = f"{market_id}-{selection_id}-{b_l}"
+
+            priceList = [db[f"{id}-{level}"]['price'] if f"{id}-{level}" in db else 0 for level in range(10)] + ['Custom']
+            sizeList = [db[f"{id}-{level}"]['size'] if f"{id}-{level}" in db else 0 for level in range(10)] + [0]
+            updatetimeList.append(max([db[f"{id}-{level}"]['update_time'] if f"{id}-{level}" in db else '0' for level in range(10)]))
+
+            b_l2 = 'BACK' if b_l == 'batb' else 'LAY'
+
+            summary.append({'id': id,'market_id': market_id, 'selection_id': selection_id,'market_name': s['market_name'],'selection_name':s['selection_name'],'b_l': b_l2, 'priceList': priceList, 'sizeList':sizeList })
+
+    updatetime = max(updatetimeList) if len(updatetimeList) > 0 else ""
+
+    logger.info(f'data for betting table {summary}')
+    return jsonify({'selected_markets': summary, 'update_time': updatetime})
+
+# Pull Market data
+
+# Process orders
+@app.route('/place_orders', methods=["POST"])
+def place_orders():
+    global last_execution_time
+    current_time = time.time()
+
+    if current_time - last_execution_time >= 1:
+        last_execution_time = current_time
+        return jsonify({"message": f"order already placed"})
+
+
+    # global trading
+    username = session.get('username', 'No name found')
+    app_key = session.get('app_key', 'No app key found')
+    session_token = session.get('session_token', 'No session token found')
     
-    with open('./webapp/data_cache.pkl', 'rb') as file:
-        data_cache = pickle.load(file)
+    trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
+    trading.session_token = session_token  # Restore session token
+
+    result_queue = queue.Queue()
+    threads = []
     
-    selected_markets = [d for d in market_catalogue if d['market_id'] in selected_ids]
-    selected_markets2 = []
-    updatetimelist = []
-    for md in selected_markets:
-        market_name = md['market_name']
-        market_id = md['market_id']
-        selection_name = md['selection_name']
-        selection_id = str(md['selection_id'])
-        try:
-            back_level_2_price = data_cache[market_id][selection_id]['BACK']['2']['price'] if '2' in data_cache[market_id][selection_id]['BACK'] else 0
-            back_level_1_price = data_cache[market_id][selection_id]['BACK']['1']['price'] if '1' in data_cache[market_id][selection_id]['BACK'] else 0
-            back_level_0_price = data_cache[market_id][selection_id]['BACK']['0']['price'] if '0' in data_cache[market_id][selection_id]['BACK'] else 0
-            lay_level_0_price = data_cache[market_id][selection_id]['LAY']['0']['price'] if '0' in data_cache[market_id][selection_id]['LAY'] else 0
-            lay_level_1_price = data_cache[market_id][selection_id]['LAY']['1']['price'] if '1' in data_cache[market_id][selection_id]['LAY'] else 0
-            lay_level_2_price = data_cache[market_id][selection_id]['LAY']['2']['price'] if '2' in data_cache[market_id][selection_id]['LAY'] else 0
+    order_details = request.get_json('order_details')
 
-            back_level_2_size = data_cache[market_id][selection_id]['BACK']['2']['size'] if '2' in data_cache[market_id][selection_id]['BACK'] else 0
-            back_level_1_size = data_cache[market_id][selection_id]['BACK']['1']['size'] if '1' in data_cache[market_id][selection_id]['BACK'] else 0
-            back_level_0_size = data_cache[market_id][selection_id]['BACK']['0']['size'] if '0' in data_cache[market_id][selection_id]['BACK'] else 0
-            lay_level_0_size = data_cache[market_id][selection_id]['LAY']['0']['size'] if '0' in data_cache[market_id][selection_id]['LAY'] else 0
-            lay_level_1_size = data_cache[market_id][selection_id]['LAY']['1']['size'] if '1' in data_cache[market_id][selection_id]['LAY'] else 0
-            lay_level_2_size = data_cache[market_id][selection_id]['LAY']['2']['size'] if '2' in data_cache[market_id][selection_id]['LAY'] else 0
+    logger.info(f'order_details\n{order_details}')
+    
+    for order in order_details['order_details']:
+        market_id = order.split('-')[0]
+        selection_id = order.split('-')[1]
+        b_l = order.split('-')[2]
+        b_l2 = 'BACK' if b_l == 'batb' else 'LAY' if b_l == 'batl' else ''
+        price = float(order_details['order_details'][order]['price'])
+        size = float(order_details['order_details'][order]['size'])
+        sizeMin = float(order_details['order_details'][order]['sizeMin'])
+        thread = Thread(target=place_order, args=(trading, selection_id, b_l2, market_id, size, price, sizeMin, result_queue))
+        threads.append(thread)
+        thread.start()
+    
+    # Wait for all threads to finish
+    for thread in threads:
+        thread.join()
+    
+     # Collect results from the queue
+    results = []
+    while not result_queue.empty():
+        results.append(result_queue.get())
 
-            back_level_2_updatetime = data_cache[market_id][selection_id]['BACK']['2']['update_time'] if '2' in data_cache[market_id][selection_id]['BACK'] else '0'
-            back_level_1_updatetime = data_cache[market_id][selection_id]['BACK']['1']['update_time'] if '1' in data_cache[market_id][selection_id]['BACK'] else '0'
-            back_level_0_updatetime = data_cache[market_id][selection_id]['BACK']['0']['update_time'] if '0' in data_cache[market_id][selection_id]['BACK'] else '0'
-            lay_level_0_updatetime = data_cache[market_id][selection_id]['LAY']['0']['update_time'] if '0' in data_cache[market_id][selection_id]['LAY'] else '0'
-            lay_level_1_updatetime = data_cache[market_id][selection_id]['LAY']['1']['update_time'] if '1' in data_cache[market_id][selection_id]['LAY'] else '0'
-            lay_level_2_updatetime = data_cache[market_id][selection_id]['LAY']['2']['update_time'] if '2' in data_cache[market_id][selection_id]['LAY'] else '0'
+    response_str = "\n\n".join(results)
 
-            updatetimelist += [back_level_2_updatetime, back_level_1_updatetime, back_level_0_updatetime, lay_level_0_updatetime, lay_level_1_updatetime, lay_level_2_updatetime]
-        except:
-            back_level_2_price = 0
-            back_level_1_price = 0
-            back_level_0_price = 0
-            lay_level_0_price = 0
-            lay_level_1_price = 0
-            lay_level_2_price = 0
-
-            back_level_2_size = 0
-            back_level_1_size = 0
-            back_level_0_size = 0
-            lay_level_0_size = 0
-            lay_level_1_size = 0
-            lay_level_2_size = 0
-
-            back_level_2_updatetime = '0'
-            back_level_1_updatetime = '0'
-            back_level_0_updatetime = '0'
-            lay_level_0_updatetime = '0'
-            lay_level_1_updatetime = '0'
-            lay_level_2_updatetime = '0'
-            pass
-
-        summary = {'market_name': market_name,
-                   'market_id': market_id,
-                   'selection_name': selection_name,
-                   'selection_id': selection_id,
-                   'back_level_2_price': back_level_2_price,
-                   'back_level_1_price': back_level_1_price,
-                   'back_level_0_price': back_level_0_price,
-                   'lay_level_0_price': lay_level_0_price,
-                   'lay_level_1_price': lay_level_1_price,
-                   'lay_level_2_price': lay_level_2_price,
-                   'back_level_2_size': back_level_2_size,
-                   'back_level_1_size': back_level_1_size,
-                   'back_level_0_size': back_level_0_size,
-                   'lay_level_0_size': lay_level_0_size,
-                   'lay_level_1_size': lay_level_1_size,
-                   'lay_level_2_size': lay_level_2_size
-                   }
-        selected_markets2.append(summary)
-
-    updatetime = max(updatetimelist) if len(updatetimelist) > 0 else ""
-    selected_markets3 = {'update_time':updatetime, 'selected_markets': selected_markets2}
-    return jsonify(selected_markets3)
-
-@app.route('/process_blue_cells', methods=["POST"])
-def process_blue_cells():
-    global trading
-
-    data = request.get_json()
-    blue_cells = data.get('blue_cells', [])
-
-    orderlist = [(cell[0].split('-')[0],cell[0].split('-')[1], cell[1].split('(')[0], 1,cell[0].split('-')[2]) for cell in blue_cells]
-
-    response = place_order(trading, orderlist)
-    response_str = "\n\n".join(response)
+    logger.info(f'response_str: {response_str}')
 
     # Example: Process IDs (you can modify this function)
     return jsonify({"message": f"{response_str}"})
 
 
+# Run App
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')

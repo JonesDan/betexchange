@@ -18,11 +18,6 @@
     .market-item:hover {
         background-color: #f8f9fa;
     }
-    /* table {
-        width: 50%;
-        border-collapse: collapse;
-        margin: 20px auto;
-    } */
     td {
         /* border: 1px solid black; */
         text-align: center;
@@ -170,46 +165,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
-    <!-- <script>
-        function checkGamepad() {
-          setInterval(() => {
-            let gamepads = navigator.getGamepads();
-            if (!gamepads) return;
-      
-            for (let gamepad of gamepads) {
-              if (!gamepad) continue;
-      
-              console.clear();
-              console.log(`Gamepad: ${gamepad.id}`);
-              
-              // Log button presses
-              gamepad.buttons.forEach((button, index) => {
-                if (button.pressed) {
-                  console.log(`Button ${index} pressed`);
-                }
-              });
-      
-              // Log axis movements
-              gamepad.axes.forEach((axis, index) => {
-                if (Math.abs(axis) > 0.1) {  // Filter small joystick drift
-                  console.log(`Axis ${index}: ${axis.toFixed(2)}`);
-                }
-              });
-            }
-          }, 100); // Check every 100ms
-        }
-      
-        // Detect gamepad connection
-        window.addEventListener("gamepadconnected", (event) => {
-          console.log(`Gamepad connected: ${event.gamepad.id}`);
-          checkGamepad();
-        });
-      
-        window.addEventListener("gamepaddisconnected", () => {
-          console.log("Gamepad disconnected");
-        });
-      </script> -->
-      
+    <script src="{{ url_for('static', filename='sse.js') }}"></script>
 
 </body>
 </html>

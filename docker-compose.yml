@@ -6,17 +6,16 @@ services:
       context: .
     volumes:
       - ./webapp:/app
-      - ./certs/:/certs/
+      - ./certs:/certs
       - shared_volume:/data
-    # ports:
-    #   - "5000:5000"
     expose:
       - "5000"
     environment:
-      BF_USER: ${BF_USER}
-      BF_PWD: ${BF_PWD}
-      BF_API_KEY: ${BF_API_KEY}
-    command: gunicorn -k gevent -w 1 -b 0.0.0.0:5000 app3:app
+      APP_CONTEXT: ${APP_CONTEXT}
+      BF_API_KEY_DEV: ${BF_API_KEY_DEV}
+      BF_API_KEY_PROD: ${BF_API_KEY_PROD}
+    # command: gunicorn -k gevent -w 1 -b 0.0.0.0:5000 app:app
+    command: gunicorn -k gevent -b 0.0.0.0:5000 app:app
     depends_on:
       - redis
       - streaming_service
@@ -27,35 +26,35 @@ services:
     build:
       context: .
     volumes:
-      - ./streaming:/app/streaming
-      - ./certs/:/certs/
+      - ./webapp:/app
+      - ./certs:/certs
       - shared_volume:/data
     environment:
-      BF_USER: ${BF_USER}
-      BF_PWD: ${BF_PWD}
-      BF_API_KEY: ${BF_API_KEY}
+      APP_CONTEXT: ${APP_CONTEXT}
+      BF_API_KEY_DEV: ${BF_API_KEY_DEV}
+      BF_API_KEY_PROD: ${BF_API_KEY_PROD}
     networks:
       - app-network
     depends_on:
       - redis
-    command: python streaming/stream_price.py
+    command: python stream_price.py
 
   streaming_service_orders:
     build:
       context: .
     volumes:
-      - ./streaming:/app/streaming
-      - ./certs/:/certs/
+      - ./webapp:/app
+      - ./certs:/certs
       - shared_volume:/data
     environment:
-      BF_USER: ${BF_USER}
-      BF_PWD: ${BF_PWD}
-      BF_API_KEY: ${BF_API_KEY}
+      APP_CONTEXT: ${APP_CONTEXT}
+      BF_API_KEY_DEV: ${BF_API_KEY_DEV}
+      BF_API_KEY_PROD: ${BF_API_KEY_PROD}
     networks:
       - app-network
     depends_on:
       - app
-    command: python streaming/stream_orders.py
+    command: python stream_orders.py
 
   redis:
     image: redis:latest
@@ -82,8 +81,8 @@ services:
     image: certbot/certbot
     volumes:
       - ./certbot/etc-letsencrypt:/etc/letsencrypt
-      - ./certbot/var-lib-letsencrypt:/var/lib/letsencrypt
-      - ./certbot/var-log-letsencrypt:/var/log/letsencrypt
+      # - ./certbot/var-lib-letsencrypt:/var/lib/letsencrypt
+      # - ./certbot/var-log-letsencrypt:/var/log/letsencrypt
       - ./certbot/www/:/var/www/certbot/
     # entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;'"
 
