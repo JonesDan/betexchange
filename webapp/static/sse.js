@@ -51,6 +51,13 @@ eventSource.addEventListener('update', function(event) {
       }
 });
 
+eventSource.onerror = function() {
+    console.error("SSE prices connection lost. Reconnecting...");
+    setTimeout(() => {
+        eventSource = new EventSource('/stream?channel=prices');
+    }, 3000);
+};
+
 
 const eventSource_orders = new EventSource('/stream?channel=orders');
 
@@ -72,6 +79,7 @@ function updateTable(data) {
         <td class="fs-6">${data.selection_name}</td>
         <td class="fs-6">${data.b_l}</td>
         <td class="fs-6">${data.price}</td>
+        <td class="fs-6">${data.avp}</td>
         <td class="fs-6">${data.size}</td>
         <td class="fs-6">${data.matched}</td>
         <td class="fs-6">${data.remaining}</td>
@@ -94,6 +102,7 @@ function updateTable(data) {
         <td class="fs-6">${data.selection_name}</td>
         <td class="fs-6">${data.b_l}</td>
         <td class="fs-6">${data.price}</td>
+        <td class="fs-6">${data.avp}</td>
         <td class="fs-6">${data.size}</td>
         <td class="fs-6">${data.matched}</td>
         <td class="fs-6">${data.remaining}</td>
@@ -105,6 +114,13 @@ function updateTable(data) {
     }
 }
 
+eventSource_orders.onerror = function() {
+    console.error("SSE orders connection lost. Reconnecting...");
+    setTimeout(() => {
+        eventSource_orders = new EventSource('/stream?channel=orders');
+    }, 3000);
+};
+
 const eventSource_orders_agg = new EventSource('/stream?channel=orders_agg');
 
 // Listen for 'update' events
@@ -115,12 +131,56 @@ eventSource_orders_agg.addEventListener('update', function(event) {
 
 // Function to update or insert a row in the table
 function updateTable_agg(data) {
-    let tableBody = document.getElementById("orders_table_agg");
-    tableBody.innerHTML = "";  // Clear existing rows
+    const expW_cell = document.getElementById(`${data.market_id}_${data.selection_id}_expW`);
+    const expL_cell = document.getElementById(`${data.market_id}_${data.selection_id}_expL`);
+    
+    if (expW_cell) {
+        expW_cell.textContent = data.exp_wins;
+        expL_cell.textContent = data.exp_lose;
 
-    data.forEach(row => {
-        let tr = document.createElement("tr");
-        tr.innerHTML = `<td>${row.market_name}</td><td>${row.selection_name}</td><td class="table-info">${row.bk_price}</td><td class="table-info">${row.bk_stake}</td>><td class="table-info">${row.bk_profit}</td><td class="table-warning">${row.lay_stake}</td><td class="table-warning">${row.lay_liability}</td><td class="table-warning">${row.lay_payout}</td>`;
-        tableBody.appendChild(tr);
-    });
+        // Add color logic
+        if (parseFloat(data.exp_wins) >= 0) {
+            expW_cell.classList.remove('text-danger');
+            expW_cell.classList.add('text-success');
+        } else {
+            expW_cell.classList.remove('text-success');
+            expW_cell.classList.add('text-danger');
+        }
+
+        if (parseFloat(data.exp_lose) >= 0) {
+            expL_cell.classList.remove('text-danger');
+            expL_cell.classList.add('text-success');
+            } else {
+            expL_cell.classList.remove('text-success');
+            expL_cell.classList.add('text-danger');
+            }
+        }
 }
+
+eventSource_orders_agg.onerror = function() {
+    console.error("SSE orders_agg connection lost. Reconnecting...");
+    setTimeout(() => {
+        eventSource_orders_agg= new EventSource('/stream?channel=orders_agg');
+    }, 3000);
+};
+
+function stopSSE() {
+    if (eventSource) {
+        eventSource.close();
+        eventSource = null; // Clear reference
+    }
+
+    if (eventSource_orders) {
+        eventSource_orders.close();
+        eventSource_orders= null; // Clear reference
+    }
+
+
+    if (eventSource_orders_agg) {
+        eventSource_orders_agg.close();
+        eventSource_orders_agg= null; // Clear reference
+    }
+}
+
+// Example: Stop SSE when switching pages
+window.addEventListener("beforeunload", stopSSE);

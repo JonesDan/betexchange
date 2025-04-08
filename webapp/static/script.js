@@ -16,7 +16,7 @@ function updatePrice(slider) {
 }
 
 function syncSlider(input) {
-    let slider = input.closest('td').previousElementSibling.querySelector('input[type="range"]');
+    let slider = input.closest('td').nextElementSibling.querySelector('input[type="range"]');
     slider.value = 10;
 }
 
@@ -72,15 +72,30 @@ function addMarketToTable(market_id) {
             el_updatetime.innerHTML = `Selected Markets <span class="small-text">updated_at: ${data.update_time}</span>`
             selected_markets.forEach(market => {
                 let rowColor = market.b_l === "BACK" ? "table-info" : "table-warning";
+                let exp_id = market.b_l === "BACK" ? `${market.market_id}_${market.selection_id}_expW` : `${market.market_id}_${market.selection_id}_expL`;
+                let exp_text_col = parseFloat(`${market.ex}`) >= 0 ? 'text-success' : 'text-danger';
+                
+                console.log(exp_text_col)
+
                 tableBody.append(`
                     <tr id=${market.id} class="${rowColor}">
                         <td class="fs-6">${market.market_name}</td>
                         <td class="fs-6">${market.selection_name}</td>
+                        <td class="text-center ${exp_text_col}" id="${exp_id}">
+                            £${market.ex}
+                        </td>
                         <td>
                             <select>
                                 <option value=""></option>
                                 <option value="A">A</option>
                                 <option value="B">B</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select>
+                                <option value=""></option>
+                                <option value="X">X</option>
+                                <option value="Y">Y</option>
                             </select>
                         </td>
                         <td class="fs-6">${market.b_l}</td>
@@ -105,6 +120,7 @@ function addMarketToTable(market_id) {
                         </td>
                     </tr>
                 `);
+
 
                 priceList[`slider-${market.id}`] = market.priceList;
 
@@ -190,6 +206,16 @@ function checkGamepad() {
                 console.log("B button pressed!");
                 place_orders("B");
             }
+
+            if (gamepad.buttons[2].pressed) { // Detect "Z" keypress
+                console.log("X button pressed!");
+                place_hedge("X");
+            }
+
+            if (gamepad.buttons[3].pressed) { // Detect "B" keypress
+                console.log("Y button pressed!");
+                place_hedge("Y");
+            }
         }
 
     }, 100); // Check every 100ms
@@ -197,7 +223,7 @@ function checkGamepad() {
 
 function triggerVibration() {
     if ("vibrate" in navigator) {  // Check if vibration is supported
-        navigator.vibrate(200);  // Vibrate for 200ms
+        navigator.vibrate(1000);  // Vibrate for 200ms
     } else {
         console.log("Vibration API not supported");
     }
@@ -236,10 +262,10 @@ function getSelectedRows(shortcut) {
     document.querySelectorAll("tbody tr").forEach(row => {
         let rowId = row.id;
         if (rowId) {
-            let selectValue = row.cells[2].querySelector("select").value;
-            let sizeValue = row.cells[4].querySelector("input").value;
-            let sizeMinValue = row.cells[5].querySelector("input").value;
-            let priceValue = row.cells[6].querySelector("input").value;
+            let selectValue = row.cells[3].querySelector("select").value;
+            let sizeValue = row.cells[6].querySelector("input").value;
+            let sizeMinValue = row.cells[7].querySelector("input").value;
+            let priceValue = row.cells[8].querySelector("input").value;
     
             console.log(selectValue, sizeValue, sizeMinValue, priceValue)
             
@@ -252,20 +278,6 @@ function getSelectedRows(shortcut) {
     return selectedRows;
 }
 
-function stopSSE() {
-    if (eventSource) {
-        eventSource.close();
-        eventSource = null; // Clear reference
-    }
-
-    if (eventSource_orders) {
-        eventSource_orders.close();
-        eventSource_orders= null; // Clear reference
-    }
-}
-
-// Example: Stop SSE when switching pages
-window.addEventListener("beforeunload", stopSSE);
 // Adjust widths when the page loads and when resized
 window.onload = matchWidths;
 window.onresize = matchWidths;

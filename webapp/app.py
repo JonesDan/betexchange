@@ -8,7 +8,7 @@ import pickle
 import os
 import betfairlightweight
 from datetime import datetime
-from utils import init_logger, bf_login, prices_listener, orders_listener, clear_shelve, place_order, list_market_catalogue, list_events
+from utils import init_logger, bf_login, prices_listener, orders_listener, clear_shelve, place_order, list_market_catalogue, list_events, orders_agg, list_current_orders
 import shelve
 import queue
 from cryptography.fernet import Fernet
@@ -88,8 +88,13 @@ def login():
             with open(api_key_file_path, "w") as file:
                 file.write(app_key)
 
+            logger.info(f'Pull current orders')
+            list_current_orders(trading, logger, redis_client)
+
             flash(f"Login Success", "success")
-            logger.info(f'Login: Login successful')
+
+            list_current_orders(trading, logger, redis_client)
+
             return redirect(url_for("eventList"))
         
         except Exception as e:
@@ -158,8 +163,12 @@ def event_detail(event_id):
         with shelve.open('shelve/market_catalogue.db') as cache:
             cache['market_catalogue'] = market_selection_ids
 
+        with open('sample/market_selection_ids.json', 'w') as json_file:
+            json.dump(market_selection_ids, json_file, indent=4)
+
         event_name = market_data[0]['event']
-        return render_template('event_details.html', markets=market_ids_list, event_name=event_name)\
+
+        return render_template('event_details.html', markets=market_ids_list, event_name=event_name)
     
     except Exception as e:
         logger.error(f'Eventdetail: {e}')
@@ -168,12 +177,20 @@ def event_detail(event_id):
         return redirect(url_for("login"))
 
 
-@app.route('/get_prices2', methods=["POST"])
-def get_prices2():
+@app.route('/get_prices', methods=["POST"])
+def get_prices():
     market_id = request.json.get("marketid", [])
 
     with shelve.open('shelve/market_catalogue.db') as cache:
         selections = dict(cache['market_catalogue'])
+
+    with shelve.open('shelve/selected_markets.db') as cache:
+        my_list = cache.get("my_list", [])  # Default to an empty list if key not found
+        my_list.append(str(market_id))
+        cache["my_list"] = my_list  # Reassign to update the shelve entry
+
+    with open('sample/selected_markets.json', 'w') as json_file:
+        json.dump(my_list, json_file, indent=4)
 
     summary = []
     updatetimeList = []
@@ -192,9 +209,27 @@ def get_prices2():
 
             b_l2 = 'BACK' if b_l == 'batb' else 'LAY'
 
-            summary.append({'id': id,'market_id': market_id, 'selection_id': selection_id,'market_name': s['market_name'],'selection_name':s['selection_name'],'b_l': b_l2, 'priceList': priceList, 'sizeList':sizeList })
+            orders_agg_dict = orders_agg()
+            if f"{market_id}_{selection_id}" in orders_agg_dict:
+                if b_l == 'batb':
+                    ex = orders_agg_dict[f"{market_id}_{selection_id}"]['exp_wins']
+                else:
+                    ex = orders_agg_dict[f"{market_id}_{selection_id}"]['exp_lose']
+            else:
+                ex = 0
+
+            summary.append({'id': id,'market_id': market_id, 'selection_id': selection_id,'market_name': s['market_name'],'selection_name':s['selection_name'],'b_l': b_l2, 'priceList': priceList, 'sizeList':sizeList,'ex':ex})
 
     updatetime = max(updatetimeList) if len(updatetimeList) > 0 else ""
+
+    #get current orders
+    with shelve.open("shelve/orders.db", writeback=True) as db:
+        order_summary = db.get("my_dict", {})
+    
+    logger.info(f'Eventdetail: Pulled {len(order_summary.keys())} existing orders')
+    for order in order_summary.keys():
+        if order_summary[order]['market_id'] in selections:
+            sse.publish(order_summary[order], type='update', channel='orders')
 
     logger.info(f'data for betting table {summary}')
     return jsonify({'selected_markets': summary, 'update_time': updatetime})
@@ -204,13 +239,6 @@ def get_prices2():
 # Process orders
 @app.route('/place_orders', methods=["POST"])
 def place_orders():
-    global last_execution_time
-    current_time = time.time()
-
-    if current_time - last_execution_time >= 1:
-        last_execution_time = current_time
-        return jsonify({"message": f"order already placed"})
-
 
     # global trading
     username = session.get('username', 'No name found')
@@ -226,13 +254,18 @@ def place_orders():
     order_details = request.get_json('order_details')
 
     logger.info(f'order_details\n{order_details}')
+
+    with shelve.open('shelve/price_cache.db') as cache:
+        price_dict = dict(cache)
     
     for order in order_details['order_details']:
         market_id = order.split('-')[0]
         selection_id = order.split('-')[1]
         b_l = order.split('-')[2]
         b_l2 = 'BACK' if b_l == 'batb' else 'LAY' if b_l == 'batl' else ''
-        price = float(order_details['order_details'][order]['price'])
+        price = float(price_dict[f'{market_id}-{selection_id}-batl-0'])
+
+
         size = float(order_details['order_details'][order]['size'])
         sizeMin = float(order_details['order_details'][order]['sizeMin'])
         thread = Thread(target=place_order, args=(trading, selection_id, b_l2, market_id, size, price, sizeMin, result_queue))
@@ -254,6 +287,39 @@ def place_orders():
 
     # Example: Process IDs (you can modify this function)
     return jsonify({"message": f"{response_str}"})
+
+# Process orders
+@app.route('/hedge_orders', methods=["POST"])
+def hedge_orders():
+    # global trading
+    username = session.get('username', 'No name found')
+    app_key = session.get('app_key', 'No app key found')
+    session_token = session.get('session_token', 'No session token found')
+    
+    trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
+    trading.session_token = session_token  # Restore session token
+
+    result_queue = queue.Queue()
+    threads = []
+    
+    order_details = request.get_json('order_details')
+
+    logger.info(f'hedge_order_details\n{order_details}')
+    
+    for order in order_details['order_details']:
+        market_id = order.split('-')[0]
+        selection_id = order.split('-')[1]
+        b_l2 = 'LAY'
+        price = float(order_details['order_details'][order]['price'])
+        size = float(order_details['order_details'][order]['size'])
+        sizeMin = float(order_details['order_details'][order]['sizeMin'])
+        thread = Thread(target=place_order, args=(trading, selection_id, b_l2, market_id, size, price, sizeMin, result_queue))
+        threads.append(thread)
+        thread.start()
+    
+    # Wait for all threads to finish
+    for thread in threads:
+        thread.join()
 
 
 # Run App

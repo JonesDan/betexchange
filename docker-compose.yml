@@ -15,7 +15,7 @@ services:
       BF_API_KEY_DEV: ${BF_API_KEY_DEV}
       BF_API_KEY_PROD: ${BF_API_KEY_PROD}
     # command: gunicorn -k gevent -w 1 -b 0.0.0.0:5000 app:app
-    command: gunicorn -k gevent -b 0.0.0.0:5000 app:app
+    command: gunicorn -k gevent -w 1 -b 0.0.0.0:5000 app:app
     depends_on:
       - redis
       - streaming_service

@@ -36,7 +36,7 @@ def init_logger(filename):
                         , filename=filepath
                         , format='%(asctime)s - %(levelname)s - %(message)s'
                         )
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger(filename)
     logger.setLevel(logging.INFO)
 
     # Create file handler
@@ -82,6 +82,9 @@ def prices_listener(app, redis_client):
                     market_id = update_data['market_id']
                     selection_id = update_data['id']
                     update_time = update_data['update_time']
+                    with shelve.open('shelve/selected_markets.db') as cache:
+                        # Retrieve the list (or create a new one if it doesn't exist)
+                        my_list = cache.get("my_list", [])  # Default to an empty list if key not found
                     for b_l in ['batl', 'batb']:
                         if b_l in update_data:
                             for l in update_data[b_l]:
@@ -91,7 +94,8 @@ def prices_listener(app, redis_client):
                                 data = {'price': price, 'size': size, 'level': l[0], 'market_id': market_id, 'selection_id': selection_id, 'b_l': b_l, 'update_time': update_time}
                                 with shelve.open('shelve/price_cache.db') as cache:
                                     cache[id] = data
-                                sse.publish(data, type='update', channel='prices')
+                                if market_id in my_list:
+                                    sse.publish(data, type='update', channel='prices')
         except Exception as e:
             logger.error(f"Error Listening: {e}")
             pass
@@ -111,6 +115,7 @@ def orders_listener(app, redis_client):
                     update_data = json.loads(update_data)
 
                     with shelve.open('shelve/market_catalogue.db') as cache:
+                        logger.info(dict(cache))
                         market_catalogue = dict(cache['market_catalogue'])
 
                     market_name = market_catalogue[update_data['market_id']][0]['market_name']
@@ -119,6 +124,11 @@ def orders_listener(app, redis_client):
                         if update_data['selection_id'] == selection['selection_id']:
                             selection_name = selection['selection_name']
 
+
+                    b_l2 = 'batb' if update_data['side'] == 'B' else 'batl'
+                    agg_id = f"{update_data['market_id']}-{update_data['selection_id']}-{b_l2}"
+                    avp = update_data['p'] if 'avp' not in update_data else update_data['avp']
+
                     data = {'market_name': market_name,
                             'selection_name':  selection_name,
                             'order_id':  update_data['id'],
@@ -126,49 +136,91 @@ def orders_listener(app, redis_client):
                             'b_l':update_data['side'], 
                             'price': update_data['p'], 
                             'size': update_data['s'],
+                            'avp': avp,
                             'matched': update_data['sm'],
                             'remaining': update_data['sr'],
                             'lapsed': update_data['sl'],
                             'cancelled': update_data['sc'],
                             'voided': update_data['sv'],
-                            'id': update_data['id']
+                            'agg_id': agg_id,
+                            'market_id': update_data['market_id'],
+                            'selection_id': update_data['selection_id']
                             }
                     
                     logger.info(data)
 
-                    sse.publish(data, type='update', channel='orders')  
-
-                    with shelve.open("shelve/orders.db", writeback=True) as db:
-                        db.setdefault("my_list", []).append(data)
-                        summary = db['my_list']
+                    with shelve.open('shelve/market_catalogue.db') as cache:
+                        market_selection_ids = cache['market_catalogue']
                     
-                    df = pd.DataFrame(summary)
+                    logger.info('publish sse')
+                    # only publish if order in marketids
+                    if data['market_id'] in market_selection_ids:
+                        sse.publish(data, type='update', channel='orders')  
 
-                    df['price'] = df['price'].astype('float')
-                    df['stake'] = df['size'].astype('float')
-                    df['bk_price'] = np.where(df['b_l'] == 'B', df['price'], 0)
-                    df['bk_stake'] = np.where(df['b_l'] == 'B', df['stake'], 0)
-                    df['bk_profit'] = np.where(df['b_l'] == 'B', df['price'] * df['stake'], 0)
-                    df['lay_stake'] = np.where(df['b_l'] == 'L', df['stake'], 0)
-                    df['lay_liability'] = np.where(df['b_l'] == 'L', (df['price']-1) * df['stake'], 0)
-                    df['lay_payout'] = np.where(df['b_l'] == 'L', df['stake'], 0)
-
-                    df_summary = df[['market_name','selection_name','bk_price','bk_stake','bk_profit','lay_stake','lay_liability','lay_payout']].groupby(['market_name','selection_name']).sum().reset_index()
-
-                    df_summary[['bk_price','bk_stake','bk_profit','lay_stake','lay_liability','lay_payout']] = df_summary[['bk_price','bk_stake','bk_profit','lay_stake','lay_liability','lay_payout']].applymap(lambda x: f"{x:.2f}")
-
-                    result_list = df_summary.to_dict(orient='records')
-                    logger.info(result_list)                    
-
-                    sse.publish(result_list, type='update', channel='orders_agg')  
+                    logger.info('cache orders')
+                    # cache orders
+                    with shelve.open("shelve/orders.db", writeback=True) as db:
+                        existing_data = db.get("my_dict", {})  # my_dict is the key in the shelve
+                        existing_data[update_data['id']] = data  # Add new or update existing
+                        db["my_dict"] = existing_data
+                        logger.info(f'Orders Listener: cached orders {existing_data}')
+                    
+                    logger.info('aggregate orders')
+                    summary_dict = orders_agg()
+                    logger.info(summary_dict)
+                    for id in summary_dict:
+                        sse.publish(summary_dict[id], type='update', channel='orders_agg') 
                     
         except Exception as e:
             logger.error(f"Error Listening: {e}")
             pass
 
+def orders_agg():
+
+    with shelve.open('shelve/selected_markets.db') as cache:
+        selected_market_ids = cache.get("my_list", []) 
+
+    # cache orders
+    with shelve.open("shelve/orders.db", writeback=True) as db:
+        data = db["my_dict"]
+
+    with open('sample/orders.json', 'w') as json_file:
+        json.dump(data, json_file, indent=4, default=datetime_serializer)
+
+    df_ = pd.DataFrame.from_dict(data, orient='index')
+    df = df_.loc[df_['market_id'].isin(selected_market_ids)]
+
+    df['price'] = df['avp'].astype('float')
+    df['stake'] = df['matched'].astype('float')
+
+    df['bk_stake'] = np.where(df['b_l'] == 'B', df['stake'], 0)
+    df['bk_payout'] = np.where(df['b_l'] == 'B', (df['price'] * df['stake']), 0)
+    df['bk_profit'] = np.where(df['b_l'] == 'B', (df['price'] * df['stake']) - df['stake'], 0)
+    df['lay_payout'] = np.where(df['b_l'] == 'L', (df['price'] * df['stake']), 0)
+    df['lay_liability'] = np.where(df['b_l'] == 'L', df['lay_payout'] - df['stake'], 0)
+    df['lay_profit'] = np.where(df['b_l'] == 'L', df['lay_payout'] - df['lay_liability'], 0)
+
+    # df_summary = df[['agg_id','bk_stake','bk_payout','bk_profit','lay_liability','lay_payout','lay_profit']].groupby(['agg_id']).sum().reset_index()
+    df_summary = df[['market_id','selection_id','bk_stake','bk_payout','bk_profit','lay_liability','lay_payout','lay_profit']].groupby(['market_id','selection_id']).sum().reset_index()
+
+    df_summary['exp_wins'] = df_summary['bk_profit'] - df_summary['lay_liability']
+    df_summary['exp_lose'] = df_summary['lay_profit'] - df_summary['bk_stake']
+
+    df_summary[['bk_stake', 'bk_payout','bk_profit','lay_liability','lay_payout','lay_profit','exp_wins','exp_lose']] = df_summary[['bk_stake', 'bk_payout','bk_profit','lay_liability','lay_payout','lay_profit','exp_wins','exp_lose']].applymap(lambda x: f"{x:.2f}")
+
+    df_summary['agg_id'] = df_summary['market_id'].astype('str') + '_' + df_summary['selection_id'].astype('str')
+    summary_dict = df_summary.set_index('agg_id').to_dict(orient='index')
+
+    with open('sample/orders_agg.json', 'w') as json_file:
+        json.dump(summary_dict, json_file, indent=4, default=datetime_serializer)
+
+    return summary_dict
+
+
+
 
 def clear_shelve():
-    for filename in ['shelve/market_catalogue.db', 'shelve/price_cache.db' ,'shelve/orders.db']:
+    for filename in ['shelve/market_catalogue.db', 'shelve/price_cache.db' , 'shelve/selected_markets.db']:
         with shelve.open(filename) as db:
             db.clear()
             
@@ -262,6 +314,32 @@ def list_events(trading):
     return events_list
 
 
+def list_current_orders(trading, logger, redis_client):
+    # get the current orders
+    # Get existing orders
+    current_orders = trading.betting.list_current_orders()
+
+    for order in current_orders.orders:
+        data = {'market_id': order.market_id,
+            'selection_id':  order.selection_id,
+            'id':  order.bet_id,
+            'update_time': order.placed_date.strftime('%Y-%m-%dT%H:%M:%S'),
+            'side': 'B' if order.side == 'BACK' else 'L', 
+            'p': order.price_size.price,
+            's': order.price_size.size,
+            'avp': order.average_price_matched,
+            'sm': order.size_matched,
+            'sr': order.size_remaining,
+            'sl': order.size_lapsed,
+            'sc': order.size_cancelled,
+            'sv': order.size_voided,
+            }
+        
+        logger.info(f'Pull Histroic Orders: {data}')
+        
+        redis_client.publish('Orders', json.dumps(data))
+
+
 
 class Streaming(threading.Thread):
     def __init__(
@@ -328,7 +406,7 @@ def bf_login(logger):
 
         password = cipher.decrypt(encrypted_password).decode()
         
-        trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs='/certs')
+        trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs='/certs/dev')
         trading.login()
         logger.info(f'Login while streaming successful')
         return trading
@@ -388,4 +466,5 @@ def stream_price(event_id):
         pass
     
     streaming.stop()
+
     
