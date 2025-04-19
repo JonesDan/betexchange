@@ -63,6 +63,10 @@
 
 <body>
     <h1 class="text-center mb-4">{{ event_name }}</h1>
+    <!-- Toast Container (top right corner) -->
+    <div aria-live="polite" aria-atomic="true" class="position-relative">
+        <div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3"></div>
+    </div>
     <div class="container mt-3">
         <!-- Navigation Tabs -->
         <ul class="nav nav-tabs" id="myTabs" role="tablist">
@@ -73,8 +77,7 @@
                 <button class="nav-link" id="place_order_tab" data-bs-toggle="tab" data-bs-target="#tab2" type="button" role="tab">Place Orders</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="order_summary
-                _tab" data-bs-toggle="tab" data-bs-target="#tab3" type="button" role="tab">Order Logs</button>
+                <button class="nav-link" id="order_summary_tab" data-bs-toggle="tab" data-bs-target="#tab3" type="button" role="tab">Order Logs (0)</button>
             </li>
         </ul>
 

@@ -74,6 +74,12 @@ function addMarketToTable(market_id) {
                 let rowColor = market.b_l === "BACK" ? "table-info" : "table-warning";
                 let exp_id = market.b_l === "BACK" ? `${market.market_id}_${market.selection_id}_expW` : `${market.market_id}_${market.selection_id}_expL`;
                 let exp_text_col = parseFloat(`${market.ex}`) >= 0 ? 'text-success' : 'text-danger';
+
+                let hedge_input = market.b_l === "BACK" ? `<select>
+                                                                <option value=""></option>
+                                                                <option value="X">X</option>
+                                                                <option value="Y">Y</option>
+                                                            </select>` : '';
                 
                 console.log(exp_text_col)
 
@@ -92,11 +98,7 @@ function addMarketToTable(market_id) {
                             </select>
                         </td>
                         <td>
-                            <select>
-                                <option value=""></option>
-                                <option value="X">X</option>
-                                <option value="Y">Y</option>
-                            </select>
+                            ${hedge_input}
                         </td>
                         <td class="fs-6">${market.b_l}</td>
                         <td id="size-${market.id}" class="fs-6"><input type="number" class="form-control form-control-sm  w-100" min="0"></td>
@@ -229,10 +231,40 @@ function triggerVibration() {
     }
 }
 
+function place_hedge(shortcut) {
+
+    triggerVibration();
+    order_details = getSelectedRows(shortcut)
+
+    console.log(order_details);
+
+    // Send AJAX request using jQuery
+    $.ajax({
+        url: "/hedge_orders",
+        type: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ order_details: order_details }),
+        success: function (response) {
+            $("#message-text").text(response.message);
+            $("#temp-message").fadeIn();
+
+            // Auto-hide the message after 3 seconds
+            setTimeout(function() {
+                $("#temp-message").fadeOut();
+            }, 3000);
+        },
+        error: function (xhr, status, error) {
+            console.error("Error:", error);
+        }
+    });
+}
+
 function place_orders(shortcut) {
 
     triggerVibration();
     order_details = getSelectedRows(shortcut)
+    showToast(`${shortcut} Button Pressed`);
+    handleButtonClick(shortcut)
 
     console.log(order_details);
 
@@ -263,19 +295,53 @@ function getSelectedRows(shortcut) {
         let rowId = row.id;
         if (rowId) {
             let selectValue = row.cells[3].querySelector("select").value;
+            let selectValue_hedge = row.cells[4].querySelector("select").value;
             let sizeValue = row.cells[6].querySelector("input").value;
             let sizeMinValue = row.cells[7].querySelector("input").value;
             let priceValue = row.cells[8].querySelector("input").value;
     
             console.log(selectValue, sizeValue, sizeMinValue, priceValue)
             
-            if (selectValue === shortcut) {
+            if (selectValue === shortcut || selectValue_hedge == shortcut) {
                 selectedRows[rowId] = {size: sizeValue, sizeMin: sizeMinValue, price: priceValue};
             }
         }
     });
     console.log(selectedRows);
     return selectedRows;
+}
+
+
+// Function to create and show a toast
+function showToast(message) {
+    const toastContainer = document.getElementById("toast-container");
+
+    const toastId = "toast-" + Date.now();
+    const toastHTML = `
+    <div id="${toastId}" class="toast align-items-center text-bg-primary border-0 mb-2" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+        <div class="toast-body">${message}</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    </div>
+    `;
+    
+    toastContainer.insertAdjacentHTML("beforeend", toastHTML);
+    const toastElement = document.getElementById(toastId);
+    const toast = new bootstrap.Toast(toastElement, { delay: 3000 });  // 3 seconds
+    toast.show();
+
+    // Optional: remove toast from DOM after hidden
+    toastElement.addEventListener('hidden.bs.toast', () => toastElement.remove());
+}
+
+function handleButtonClick(shortcut) {
+    // Your existing JS logic here
+    console.log(`${shortcut} button pressed`); // or any other action
+
+    // Speak the message
+    const message = new SpeechSynthesisUtterance(`${shortcut} button pressed`);
+    window.speechSynthesis.speak(message);
 }
 
 // Adjust widths when the page loads and when resized

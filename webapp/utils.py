@@ -182,37 +182,44 @@ def orders_agg():
 
     # cache orders
     with shelve.open("shelve/orders.db", writeback=True) as db:
-        data = db["my_dict"]
+        data = db.get("my_dict", {}) 
 
     with open('sample/orders.json', 'w') as json_file:
         json.dump(data, json_file, indent=4, default=datetime_serializer)
 
-    df_ = pd.DataFrame.from_dict(data, orient='index')
-    df = df_.loc[df_['market_id'].isin(selected_market_ids)]
+    if data != {}:
+        df_ = pd.DataFrame.from_dict(data, orient='index')
+        df = df_.loc[df_['market_id'].isin(selected_market_ids)]
 
-    df['price'] = df['avp'].astype('float')
-    df['stake'] = df['matched'].astype('float')
+        df['price'] = df['avp'].astype('float')
+        df['stake'] = df['matched'].astype('float')
 
-    df['bk_stake'] = np.where(df['b_l'] == 'B', df['stake'], 0)
-    df['bk_payout'] = np.where(df['b_l'] == 'B', (df['price'] * df['stake']), 0)
-    df['bk_profit'] = np.where(df['b_l'] == 'B', (df['price'] * df['stake']) - df['stake'], 0)
-    df['lay_payout'] = np.where(df['b_l'] == 'L', (df['price'] * df['stake']), 0)
-    df['lay_liability'] = np.where(df['b_l'] == 'L', df['lay_payout'] - df['stake'], 0)
-    df['lay_profit'] = np.where(df['b_l'] == 'L', df['lay_payout'] - df['lay_liability'], 0)
+        df['bk_stake'] = np.where(df['b_l'] == 'B', df['stake'], 0)
+        df['bk_payout'] = np.where(df['b_l'] == 'B', (df['price'] * df['stake']), 0)
+        df['bk_profit'] = np.where(df['b_l'] == 'B', (df['price'] * df['stake']) - df['stake'], 0)
+        df['lay_payout'] = np.where(df['b_l'] == 'L', (df['price'] * df['stake']), 0)
+        df['lay_liability'] = np.where(df['b_l'] == 'L', df['lay_payout'] - df['stake'], 0)
+        df['lay_profit'] = np.where(df['b_l'] == 'L', df['lay_payout'] - df['lay_liability'], 0)
 
-    # df_summary = df[['agg_id','bk_stake','bk_payout','bk_profit','lay_liability','lay_payout','lay_profit']].groupby(['agg_id']).sum().reset_index()
-    df_summary = df[['market_id','selection_id','bk_stake','bk_payout','bk_profit','lay_liability','lay_payout','lay_profit']].groupby(['market_id','selection_id']).sum().reset_index()
+        # df_summary = df[['agg_id','bk_stake','bk_payout','bk_profit','lay_liability','lay_payout','lay_profit']].groupby(['agg_id']).sum().reset_index()
+        df_summary = df[['market_id','selection_id','bk_stake','bk_payout','bk_profit','lay_liability','lay_payout','lay_profit']].groupby(['market_id','selection_id']).sum().reset_index()
 
-    df_summary['exp_wins'] = df_summary['bk_profit'] - df_summary['lay_liability']
-    df_summary['exp_lose'] = df_summary['lay_profit'] - df_summary['bk_stake']
+        df_summary['exp_wins'] = df_summary['bk_profit'] - df_summary['lay_liability']
+        df_summary['exp_lose'] = df_summary['lay_profit'] - df_summary['bk_stake']
 
-    df_summary[['bk_stake', 'bk_payout','bk_profit','lay_liability','lay_payout','lay_profit','exp_wins','exp_lose']] = df_summary[['bk_stake', 'bk_payout','bk_profit','lay_liability','lay_payout','lay_profit','exp_wins','exp_lose']].applymap(lambda x: f"{x:.2f}")
+        df_summary[['bk_stake', 'bk_payout','bk_profit','lay_liability','lay_payout','lay_profit','exp_wins','exp_lose']] = df_summary[['bk_stake', 'bk_payout','bk_profit','lay_liability','lay_payout','lay_profit','exp_wins','exp_lose']].applymap(lambda x: f"{x:.2f}")
 
-    df_summary['agg_id'] = df_summary['market_id'].astype('str') + '_' + df_summary['selection_id'].astype('str')
-    summary_dict = df_summary.set_index('agg_id').to_dict(orient='index')
+        df_summary['agg_id'] = df_summary['market_id'].astype('str') + '_' + df_summary['selection_id'].astype('str')
+        summary_dict = df_summary.set_index('agg_id').to_dict(orient='index')
 
-    with open('sample/orders_agg.json', 'w') as json_file:
-        json.dump(summary_dict, json_file, indent=4, default=datetime_serializer)
+        with shelve.open("shelve/orders_agg.db", writeback=True) as db:
+            db = summary_dict
+
+        with open('sample/orders_agg.json', 'w') as json_file:
+            json.dump(summary_dict, json_file, indent=4, default=datetime_serializer)
+
+    else:
+        summary_dict = {}
 
     return summary_dict
 
@@ -406,7 +413,8 @@ def bf_login(logger):
 
         password = cipher.decrypt(encrypted_password).decode()
         
-        trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs='/certs/dev')
+        context = os.environ[f'APP_CONTEXT']
+        trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs=f'/certs/{context}')
         trading.login()
         logger.info(f'Login while streaming successful')
         return trading

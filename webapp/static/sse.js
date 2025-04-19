@@ -112,6 +112,9 @@ function updateTable(data) {
         <td class="fs-6">${data.update_time}</td>
                     `;
     }
+    const rowCount = document.querySelectorAll('#orders_table tbody tr').length;
+    const tab = document.getElementById('order_summary_tab');
+    tab.textContent = `Order Logs (${rowCount})`;
 }
 
 eventSource_orders.onerror = function() {

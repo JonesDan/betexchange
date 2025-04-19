@@ -255,17 +255,13 @@ def place_orders():
 
     logger.info(f'order_details\n{order_details}')
 
-    with shelve.open('shelve/price_cache.db') as cache:
-        price_dict = dict(cache)
     
     for order in order_details['order_details']:
         market_id = order.split('-')[0]
         selection_id = order.split('-')[1]
         b_l = order.split('-')[2]
         b_l2 = 'BACK' if b_l == 'batb' else 'LAY' if b_l == 'batl' else ''
-        price = float(price_dict[f'{market_id}-{selection_id}-batl-0'])
-
-
+        price = float(order_details['order_details'][order]['price'])
         size = float(order_details['order_details'][order]['size'])
         sizeMin = float(order_details['order_details'][order]['sizeMin'])
         thread = Thread(target=place_order, args=(trading, selection_id, b_l2, market_id, size, price, sizeMin, result_queue))
@@ -305,14 +301,20 @@ def hedge_orders():
     order_details = request.get_json('order_details')
 
     logger.info(f'hedge_order_details\n{order_details}')
+
+    with shelve.open('shelve/price_cache.db') as cache:
+        price_dict = dict(cache)
+
+    with shelve.open('shelve/orders_agg.db') as cache:
+        orders_agg_dict = dict(cache)
     
     for order in order_details['order_details']:
         market_id = order.split('-')[0]
         selection_id = order.split('-')[1]
         b_l2 = 'LAY'
-        price = float(order_details['order_details'][order]['price'])
-        size = float(order_details['order_details'][order]['size'])
-        sizeMin = float(order_details['order_details'][order]['sizeMin'])
+        price = float(price_dict[f'{market_id}-{selection_id}-batl-0'])
+        size = float(orders_agg_dict[f'{market_id}-{selection_id}']['exp_wins']) - float(orders_agg_dict[f'{market_id}-{selection_id}']['exp_lose'])
+        sizeMin = 0
         thread = Thread(target=place_order, args=(trading, selection_id, b_l2, market_id, size, price, sizeMin, result_queue))
         threads.append(thread)
         thread.start()
