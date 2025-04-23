@@ -30,7 +30,7 @@
             <tbody>
                 {% for event in events %}
                 <tr>
-                    <td><a href="{{ url_for('event_detail', event_id=event.event_id) }}">{{ event.event_name }}</a></td>
+                    <td><a href="{{ url_for('eventDetail', event_id=event.event_id) }}">{{ event.event_name }}</a></td>
                     <td>{{ event.date }}</td>
                 </tr>
                 {% endfor %}

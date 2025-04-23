@@ -1,17 +1,19 @@
-from flask import Flask, render_template, Response, jsonify, request, session, flash,redirect, url_for
+from flask import Flask, render_template, jsonify, request, session, flash,redirect, url_for
 from flask_session import Session
 from flask_sse import sse
 from threading import Thread
 import redis
-import json
-import pickle
 import os
 import betfairlightweight
-from datetime import datetime
-from utils import init_logger, bf_login, prices_listener, orders_listener, clear_shelve, place_order, list_market_catalogue, list_events, orders_agg, list_current_orders
+from utils import init_logger, place_order, list_market_catalogue, list_events
+from utils_db import query_sqlite, init_db, delete_sample_files, init_selected_markets
 import shelve
 import queue
 from cryptography.fernet import Fernet
+from stream_price import stream_price
+from stream_orders import stream_orders
+import multiprocessing
+import pickle
 import time
 
 # Logging
@@ -35,10 +37,7 @@ Session(app)  # Initialize Flask-Session
 
 # Redis Client
 redis_client = redis.Redis(host='redis', port=6379)
-
-# Redis - listening to price stream
-Thread(target=prices_listener, args=(app, redis_client), daemon=True).start()
-Thread(target=orders_listener, args=(app, redis_client), daemon=True).start()
+current_process = {'process_price': None, 'process_order': None}
 
 ### Flask apps
 
@@ -69,36 +68,23 @@ def login():
             session['username'] = username
             session['app_key'] = app_key
             session['session_token'] = trading.session_token
-
-            pwd_file_path = '/data/betfair_token.txt'
-            key_file_path = '/data/betfair_token.key'
-            user_file_path = '/data/betfair_username.txt'
-            api_key_file_path = '/data/betfair_api_key.txt'
+            logger.info(f'Login: Successful Login')
 
             key = Fernet.generate_key()
             cipher = Fernet(key)
             encrypted_password = cipher.encrypt(password.encode())
+            session['e'] = encrypted_password
 
-            with open(pwd_file_path, "wb") as file:
-                file.write(encrypted_password)
-            with open(key_file_path, "wb") as file:
+            with open('/data/e.key', "wb") as file:
                 file.write(key)
-            with open(user_file_path, "w") as file:
-                file.write(username)
-            with open(api_key_file_path, "w") as file:
-                file.write(app_key)
 
-            logger.info(f'Pull current orders')
-            list_current_orders(trading, logger, redis_client)
-
-            flash(f"Login Success", "success")
-
-            list_current_orders(trading, logger, redis_client)
+            results = delete_sample_files()
+            logger.info(f'Login: Delete sample files output {results}')
 
             return redirect(url_for("eventList"))
         
         except Exception as e:
-            logger.error(f'Login: {e}')
+            logger.error(f'Login: error {e}')
             flash(f"Login failed: {e}", "danger")
             return redirect(url_for("login"))
 
@@ -107,6 +93,7 @@ def eventList():
 
     try:
         logger.info(f'EventList: Pull List of Events')
+
         username = session.get('username', 'No name found')
         app_key = session.get('app_key', 'No app key found')
         session_token = session.get('session_token', 'No session token found')
@@ -118,21 +105,29 @@ def eventList():
         logger.info(f'EventList: Number of events pulled {len(events)}')
         redis_client.publish('event_control', "Na")  # Publish to Redis
 
+        logger.info(f'EventList: Pulled {len(events)}')
+
         return render_template('eventList.html', events=events)
       
     except Exception as e:
-        logger.error(f'EventList: {e}')
-        flash(f"Error pulling events. Try logging in again", "danger")
-
+        logger.error(f'EventList: error {e}')
+        flash(f"Error pulling EventList: {e}", "danger")
         return redirect(url_for("login"))
 
 
-@app.route('/event/<int:event_id>')
-def event_detail(event_id):
+@app.route('/eventDetail/<int:event_id>')
+def eventDetail(event_id):
     try:
-        logger.info(f'Eventdetail: Pull event detail for {event_id}')
-        # clear caches
-        clear_shelve()
+        logger.info(f'EventDetail: Pull event detail for {event_id}')
+
+        logger.info(f'EventDetail: Create sqlite tables')
+        results = init_db()
+        logger.info(f'EventDetail: init_db results {results}')
+
+        logger.info(f'EventDetail: Clear selected_markets shelve')
+        init_selected_markets()
+
+        logger.info(f'EventDetail: Pull event detail for {event_id}')
 
         # Get Sessions details
         username = session.get('username', 'No name found')
@@ -141,188 +136,207 @@ def event_detail(event_id):
         
         trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
         trading.session_token = session_token  # Restore session token
-        
-        # Publish event id for price streaming
-        logger.info(f'Eventdetail: Publish {event_id} to redis for price stream')
-        redis_client.publish('event_control', str(event_id))  # Publish to Redis
-        
+
+        logger.info(f'EventDetail: Pull Markets')
+
         # Get markets and build market cache
-        market_data = list_market_catalogue(trading, event_id)
-        market_selection_ids = {}
-        market_ids_list = []
-        logger.info(f'Eventdetail: Pulled {len(market_data)} Markets')
-        for market in market_data:
-            market_id = market['market_id']
-            summary = {'selection_id': market['selection_id'], 'selection_name':market['selection_name'], 'market_name':market['market_name']}
-            # Create list of unique market ids for table
-            if market_id not in market_selection_ids:
-                market_ids_list.append({'id': market['market_id'], 'market_name': market['market_name'], 'total_matched': f"{market['total_matched']:,}"})
+        list_market_catalogue(trading, event_id)
+        market_ids_list = query_sqlite("SELECT DISTINCT event, market_id, market_name, printf('%.2f', total_matched) AS total_matched FROM market_catalogue")
+        logger.info(market_ids_list)
 
-            market_selection_ids.setdefault(market_id, []).append(summary)
+        event_name =  market_ids_list[0]['event']
 
-        with shelve.open('shelve/market_catalogue.db') as cache:
-            cache['market_catalogue'] = market_selection_ids
+        logger.info(f'EventDetail: Pulled {len(market_ids_list)} Markets')
 
-        with open('sample/market_selection_ids.json', 'w') as json_file:
-            json.dump(market_selection_ids, json_file, indent=4)
-
-        event_name = market_data[0]['event']
-
-        return render_template('event_details.html', markets=market_ids_list, event_name=event_name)
+        return render_template('eventDetail.html', markets=market_ids_list, event_name=event_name)
     
     except Exception as e:
-        logger.error(f'Eventdetail: {e}')
-        flash(f"Error pulling event details. Try logging in again", "danger")
-
+        logger.error(f'Eventdetail: error {e}')
+        flash(f"Error pulling EventDetail: {e}", "danger")
         return redirect(url_for("login"))
 
 
 @app.route('/get_prices', methods=["POST"])
 def get_prices():
-    market_id = request.json.get("marketid", [])
 
-    with shelve.open('shelve/market_catalogue.db') as cache:
-        selections = dict(cache['market_catalogue'])
+    try:
+        market_id = request.json.get("marketid", [])
 
-    with shelve.open('shelve/selected_markets.db') as cache:
-        my_list = cache.get("my_list", [])  # Default to an empty list if key not found
-        my_list.append(str(market_id))
-        cache["my_list"] = my_list  # Reassign to update the shelve entry
+        logger.info(f'getPrices: Pull prices for {market_id}')
 
-    with open('sample/selected_markets.json', 'w') as json_file:
-        json.dump(my_list, json_file, indent=4)
+        prices = query_sqlite(f"""
+                            SELECT 
+                                p.market_id AS market_id,
+                                m.market_name AS market_name,
+                                p.selection_id AS selection_id,
+                                m.selection_name AS selection_name,
+                                p.side AS side,
+                                MAX(p.publish_time) AS publish_time,
+                                GROUP_CONCAT(p.price) AS priceList, 
+                                GROUP_CONCAT(p.size) AS sizeList,
+                                SUM(s.exposure) AS exposure
+                            FROM price p
+                            JOIN market_catalogue m
+                                ON p.market_id = m.market_id AND p.selection_id = m.selection_id
+                            LEFT JOIN selection_exposure s
+                                ON m.market_id = s.market_id  AND m.selection_id = s.selection_id
+                            WHERE p.market_id = '{market_id}'
+                            GROUP BY p.market_id, m.market_name, p.selection_id, m.selection_name, p.side
+                            """)
+        
+        
+        logger.info(f'getPrices: Convert Prices and Size to List: {prices[0]}')
 
-    summary = []
-    updatetimeList = []
-    with shelve.open('shelve/price_cache.db') as cache:
-        db = dict(cache)
-
-    for s in selections[str(market_id)]:
-        logger.info(f'selection {s}')
-        for b_l in ['batb','batl']:
-            selection_id = s['selection_id']
-            id = f"{market_id}-{selection_id}-{b_l}"
-
-            priceList = [db[f"{id}-{level}"]['price'] if f"{id}-{level}" in db else 0 for level in range(10)] + ['Custom']
-            sizeList = [db[f"{id}-{level}"]['size'] if f"{id}-{level}" in db else 0 for level in range(10)] + [0]
-            updatetimeList.append(max([db[f"{id}-{level}"]['update_time'] if f"{id}-{level}" in db else '0' for level in range(10)]))
-
-            b_l2 = 'BACK' if b_l == 'batb' else 'LAY'
-
-            orders_agg_dict = orders_agg()
-            if f"{market_id}_{selection_id}" in orders_agg_dict:
-                if b_l == 'batb':
-                    ex = orders_agg_dict[f"{market_id}_{selection_id}"]['exp_wins']
-                else:
-                    ex = orders_agg_dict[f"{market_id}_{selection_id}"]['exp_lose']
-            else:
-                ex = 0
-
-            summary.append({'id': id,'market_id': market_id, 'selection_id': selection_id,'market_name': s['market_name'],'selection_name':s['selection_name'],'b_l': b_l2, 'priceList': priceList, 'sizeList':sizeList,'ex':ex})
-
-    updatetime = max(updatetimeList) if len(updatetimeList) > 0 else ""
-
-    #get current orders
-    with shelve.open("shelve/orders.db", writeback=True) as db:
-        order_summary = db.get("my_dict", {})
+        for price in prices:
+            price['priceList'] = price['priceList'].split(',')
+            price['sizeList'] = price['sizeList'].split(',')
     
-    logger.info(f'Eventdetail: Pulled {len(order_summary.keys())} existing orders')
-    for order in order_summary.keys():
-        if order_summary[order]['market_id'] in selections:
-            sse.publish(order_summary[order], type='update', channel='orders')
+        return jsonify({'selected_markets': prices, 'update_time': price[0]['publish_time']})
+    
+    except Exception as e:
+        logger.error(f'getPrices: error {e}')
+        pass
 
-    logger.info(f'data for betting table {summary}')
-    return jsonify({'selected_markets': summary, 'update_time': updatetime})
-
-# Pull Market data
 
 # Process orders
 @app.route('/place_orders', methods=["POST"])
 def place_orders():
+    try:
+        # global trading
+        username = session.get('username', 'No name found')
+        app_key = session.get('app_key', 'No app key found')
+        session_token = session.get('session_token', 'No session token found')
+        
+        trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
+        trading.session_token = session_token  # Restore session token
 
-    # global trading
-    username = session.get('username', 'No name found')
-    app_key = session.get('app_key', 'No app key found')
-    session_token = session.get('session_token', 'No session token found')
+        result_queue = queue.Queue()
+        threads = []
+        
+        order_details = request.get_json('order_details')
+
+        logger.info(f'order_details\n{order_details}')
+
+        for order in order_details['order_details']:
+
+            logger.info(f"placeOrder: {order_details['order_details'][order]}")
+
+            market_id = order.split('-')[0]
+            selection_id = order.split('-')[1]
+            b_l = order.split('-')[2]
+            hedge = order_details['order_details'][order]['hedge']
+            if not hedge:
+                b_l2 = 'BACK' if b_l == 'batb' else 'LAY' if b_l == 'batl' else ''
+                price = float(order_details['order_details'][order]['price'])
+                size = float(order_details['order_details'][order]['size'])
+                sizeMin = float(order_details['order_details'][order]['sizeMin'])
+            else:
+                b_l2 = 'LAY'
+                price = query_sqlite(f"SELECT price FROM price p WHERE key = '{market_id}-{selection_id}-batl-0'")
+                size = query_sqlite(f"SELECT exposure FROM selection_exposure p WHERE key = '{market_id}-{selection_id}'")
+                sizeMin = 0
+            thread = Thread(target=place_order, args=(trading, selection_id, b_l2, market_id, size, price, sizeMin, result_queue))
+            threads.append(thread)
+            thread.start()
+        
+        # Wait for all threads to finish
+        for thread in threads:
+            thread.join()
+        
+        # Collect results from the queue
+        results = []
+        while not result_queue.empty():
+            results.append(result_queue.get())
+
+        response_str = "\n\n".join(results)
+
+        logger.info(f'placeOrder: response = {response_str}')
     
-    trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
-    trading.session_token = session_token  # Restore session token
-
-    result_queue = queue.Queue()
-    threads = []
-    
-    order_details = request.get_json('order_details')
-
-    logger.info(f'order_details\n{order_details}')
-
-    
-    for order in order_details['order_details']:
-        market_id = order.split('-')[0]
-        selection_id = order.split('-')[1]
-        b_l = order.split('-')[2]
-        b_l2 = 'BACK' if b_l == 'batb' else 'LAY' if b_l == 'batl' else ''
-        price = float(order_details['order_details'][order]['price'])
-        size = float(order_details['order_details'][order]['size'])
-        sizeMin = float(order_details['order_details'][order]['sizeMin'])
-        thread = Thread(target=place_order, args=(trading, selection_id, b_l2, market_id, size, price, sizeMin, result_queue))
-        threads.append(thread)
-        thread.start()
-    
-    # Wait for all threads to finish
-    for thread in threads:
-        thread.join()
-    
-     # Collect results from the queue
-    results = []
-    while not result_queue.empty():
-        results.append(result_queue.get())
-
-    response_str = "\n\n".join(results)
-
-    logger.info(f'response_str: {response_str}')
+    except Exception as e:
+        logger.error(f'placeOrder: error {e}')
+        response_str = 'Error in order code. Check Logs'
+        pass
 
     # Example: Process IDs (you can modify this function)
     return jsonify({"message": f"{response_str}"})
 
-# Process orders
-@app.route('/hedge_orders', methods=["POST"])
-def hedge_orders():
-    # global trading
+@app.route('/stop_process', methods=['POST'])
+def stop_process():
+    global current_process
+
+    # Stop existing process if it's running
+    if current_process['process_price'] is not None and current_process['process_price'].is_alive():
+        logger.info("stopProcess: 🛑 Stopping existing price process...")
+        current_process['process_price'].terminate()
+        current_process['process_price'].join()
+        current_process['process_price'] = None
+
+    if current_process['process_order'] is not None and current_process['process_order'].is_alive():
+        logger.info("stopProcess:🛑 Stopping existing order process...")
+        current_process['process_order'].terminate()
+        current_process['process_order'].join()
+        current_process['process_order'] = None
+
+    return "Process stopped"
+
+@app.route('/start_process', methods=['POST'])
+def start_process():
+    global current_process
+    
+    data = request.get_json()
+    url = data.get('url')  # This is the URL sent from JavaScript
+    event_id = url.split('/')[-1]
+
     username = session.get('username', 'No name found')
     app_key = session.get('app_key', 'No app key found')
-    session_token = session.get('session_token', 'No session token found')
+    e = session.get('e', 'No e token found')
+
+
+    # Stop existing process if it's running
+    if current_process['process_price'] is not None and current_process['process_price'].is_alive():
+        logger.info("startProcess: 🛑 Stopping existing price process...")
+        current_process['process_price'].terminate()
+        current_process['process_price'].join()
+
+    if current_process['process_order'] is not None and current_process['process_order'].is_alive():
+        logger.info("startProcess: 🛑 Stopping existin order process...")
+        current_process['process_order'].terminate()
+        current_process['process_order'].join()
+
+    # Start new process
+    new_proc_price = multiprocessing.Process(target=stream_price, args=(username, app_key, e, context, event_id))
+    new_proc_price.start()
+    current_process['process_price'] = new_proc_price
+    logger.info("startProcess: ✅ Started new price background process.")
+    # Start new process
+    # new_proc_order = multiprocessing.Process(target=stream_orders, args=(username, app_key, e,  context))
+    # new_proc_order.start()
+    # current_process['process_order'] = new_proc_order
+    # logger.info("startProcess: ✅ Started new order background process.")
+
+    return "Process started"
+
+@app.route('/update_selection', methods=['POST'])
+def update_selection():
+    data = request.get_json()
+    market_id = data.get('market_id')  # This is the URL sent from JavaScript
+    add_remove = data.get('add_remove')  # This is the URL sent from JavaScript
+
+    logger.info(f"updateSelection: {data}")
+
+    with open('data/selected_markets.pkl', 'rb') as f:
+        my_list = pickle.load(f)
     
-    trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
-    trading.session_token = session_token  # Restore session token
+    if add_remove == 'add':
+        my_list.append(str(market_id))
+    elif add_remove == 'remove':
+        my_list.remove(str(market_id))
 
-    result_queue = queue.Queue()
-    threads = []
+    with open('data/selected_markets.pkl', 'wb') as f:
+        pickle.dump(my_list, f)
+
+    return "Updated Selection"
     
-    order_details = request.get_json('order_details')
-
-    logger.info(f'hedge_order_details\n{order_details}')
-
-    with shelve.open('shelve/price_cache.db') as cache:
-        price_dict = dict(cache)
-
-    with shelve.open('shelve/orders_agg.db') as cache:
-        orders_agg_dict = dict(cache)
-    
-    for order in order_details['order_details']:
-        market_id = order.split('-')[0]
-        selection_id = order.split('-')[1]
-        b_l2 = 'LAY'
-        price = float(price_dict[f'{market_id}-{selection_id}-batl-0'])
-        size = float(orders_agg_dict[f'{market_id}-{selection_id}']['exp_wins']) - float(orders_agg_dict[f'{market_id}-{selection_id}']['exp_lose'])
-        sizeMin = 0
-        thread = Thread(target=place_order, args=(trading, selection_id, b_l2, market_id, size, price, sizeMin, result_queue))
-        threads.append(thread)
-        thread.start()
-    
-    # Wait for all threads to finish
-    for thread in threads:
-        thread.join()
-
 
 # Run App
 if __name__ == '__main__':

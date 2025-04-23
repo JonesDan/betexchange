@@ -8,6 +8,7 @@ eventSource.addEventListener('update', function(event) {
     const chartInstance = Chart.getChart(chartId); // Get the chart instance by ID
 
     if (chartInstance) {
+        console.log(`Update data for chart ${chartId}`);
         const el_updatetime = document.getElementById("update_time");
 
         const Labels = chartInstance.data.labels
@@ -38,13 +39,7 @@ eventSource.addEventListener('update', function(event) {
             }
         })
 
-        let levelValue = document.getElementById(`slider-${data.market_id}-${data.selection_id}-${data.b_l}`).value
-
-        const max = Labels[0]
-        const min = Labels[levelValue]
-
         el_updatetime.innerHTML = `Selected Markets <span class="small-text">updated_at: ${data.update_time}</span>`
-        // min_price.innerHTML = `${min}`
 
       } else {
         console.log("Chart not found!");
@@ -70,24 +65,27 @@ eventSource_orders.addEventListener('update', function(event) {
 // Function to update or insert a row in the table
 function updateTable(data) {
     const table = document.getElementById("orders_table");
-    let row = document.getElementById(`row-${data.order_id}`);
+    let row = document.getElementById(`row-${data.bet_id}`);
 
     if (row) {
         // Update existing row
+        console.log(`Update order ${data.bet_id}`);
         row.innerHTML = `
-        <td class="fs-6">${data.market_name}</td>
-        <td class="fs-6">${data.selection_name}</td>
-        <td class="fs-6">${data.b_l}</td>
-        <td class="fs-6">${data.price}</td>
-        <td class="fs-6">${data.avp}</td>
-        <td class="fs-6">${data.size}</td>
-        <td class="fs-6">${data.matched}</td>
-        <td class="fs-6">${data.remaining}</td>
-        <td class="fs-6">${data.lapsed}</td>
-        <td class="fs-6">${data.cancelled}</td>
-        <td class="fs-6">${data.voided}</td>
-        <td class="fs-6">${data.update_time}</td>
-    `;
+                    <td class="fs-6">${data.bet_id}</td>
+                    <td class="fs-6">${data.market_name}</td>
+                    <td class="fs-6">${data.selection_selection}</td>
+                    <td class="fs-6">${data.placed_date}</td>
+                    <td class="fs-6">${data.side}</td>
+                    <td class="fs-6">${data.status}</td>
+                    <td class="fs-6">${data.price}</td>
+                    <td class="fs-6">${data.size}</td>
+                    <td class="fs-6">${data.average_price_matched}</td>
+                    <td class="fs-6">${data.size_matched}</td>
+                    <td class="fs-6">${data.size_remaining}</td>
+                    <td class="fs-6">${data.size_lapsed}</td>
+                    <td class="fs-6">${data.size_cancelled}</td>
+                    <td class="fs-6">${data.size_voided}</td>
+                    `;
     } else {
         
         // Create new row if it doesn't exist
@@ -97,20 +95,24 @@ function updateTable(data) {
         let rowColor = data.b_l === "B" ? "table-info" : "table-warning";
         row.classList.add(`${rowColor}`);
 
+        console.log(`Add new order ${data.order_id}`);
+
         row.innerHTML = `
-        <td class="fs-6">${data.market_name}</td>
-        <td class="fs-6">${data.selection_name}</td>
-        <td class="fs-6">${data.b_l}</td>
-        <td class="fs-6">${data.price}</td>
-        <td class="fs-6">${data.avp}</td>
-        <td class="fs-6">${data.size}</td>
-        <td class="fs-6">${data.matched}</td>
-        <td class="fs-6">${data.remaining}</td>
-        <td class="fs-6">${data.lapsed}</td>
-        <td class="fs-6">${data.cancelled}</td>
-        <td class="fs-6">${data.voided}</td>
-        <td class="fs-6">${data.update_time}</td>
-                    `;
+                    <td class="fs-6">${data.bet_id}</td>
+                    <td class="fs-6">${data.market_name}</td>
+                    <td class="fs-6">${data.selection_name}</td>
+                    <td class="fs-6">${data.placed_date}</td>
+                    <td class="fs-6">${data.side}</td>
+                    <td class="fs-6">${data.status}</td>
+                    <td class="fs-6">${data.price}</td>
+                    <td class="fs-6">${data.size}</td>
+                    <td class="fs-6">${data.average_price_matched}</td>
+                    <td class="fs-6">${data.size_matched}</td>
+                    <td class="fs-6">${data.size_remaining}</td>
+                    <td class="fs-6">${data.size_lapsed}</td>
+                    <td class="fs-6">${data.size_cancelled}</td>
+                    <td class="fs-6">${data.size_voided}</td>
+                        `;
     }
     const rowCount = document.querySelectorAll('#orders_table tbody tr').length;
     const tab = document.getElementById('order_summary_tab');
@@ -124,46 +126,41 @@ eventSource_orders.onerror = function() {
     }, 3000);
 };
 
-const eventSource_orders_agg = new EventSource('/stream?channel=orders_agg');
+const eventSource_selection_exposure = new EventSource('/stream?channel=selection_exposure');
 
 // Listen for 'update' events
-eventSource_orders_agg.addEventListener('update', function(event) {
+eventSource_selection_exposure.addEventListener('update', function(event) {
     const data = JSON.parse(event.data); // Parse incoming JSON data
-    updateTable_agg(data);
+    updateSelection_exp(data);
 });
 
-// Function to update or insert a row in the table
-function updateTable_agg(data) {
-    const expW_cell = document.getElementById(`${data.market_id}_${data.selection_id}_expW`);
-    const expL_cell = document.getElementById(`${data.market_id}_${data.selection_id}_expL`);
-    
-    if (expW_cell) {
-        expW_cell.textContent = data.exp_wins;
-        expL_cell.textContent = data.exp_lose;
 
-        // Add color logic
-        if (parseFloat(data.exp_wins) >= 0) {
-            expW_cell.classList.remove('text-danger');
-            expW_cell.classList.add('text-success');
-        } else {
-            expW_cell.classList.remove('text-success');
-            expW_cell.classList.add('text-danger');
-        }
+function updateSelection_exp(dataList) {
+    dataList.forEach(data => {
+        const expW_cell = document.getElementById(`${data.market_id}_${data.selection_id}_expW`);
 
-        if (parseFloat(data.exp_lose) >= 0) {
-            expL_cell.classList.remove('text-danger');
-            expL_cell.classList.add('text-success');
+        if (expW_cell) {
+            console.log(`Update exposure ${data.market_id}_${data.selection_id}_expW`);
+
+            expW_cell.textContent = data.back_exposure;
+
+            // Add color logic
+            if (parseFloat(data.back_exposure) >= 0) {
+                expW_cell.classList.remove('text-danger');
+                expW_cell.classList.add('text-success');
             } else {
-            expL_cell.classList.remove('text-success');
-            expL_cell.classList.add('text-danger');
+                expW_cell.classList.remove('text-success');
+                expW_cell.classList.add('text-danger');
             }
         }
+    });
 }
 
-eventSource_orders_agg.onerror = function() {
-    console.error("SSE orders_agg connection lost. Reconnecting...");
+
+eventSource_selection_exposure.onerror = function() {
+    console.error("SSE selection_exposure connection lost. Reconnecting...");
     setTimeout(() => {
-        eventSource_orders_agg= new EventSource('/stream?channel=orders_agg');
+        eventSource_selection_exposure= new EventSource('/stream?channel=selection_exposure');
     }, 3000);
 };
 
@@ -179,9 +176,9 @@ function stopSSE() {
     }
 
 
-    if (eventSource_orders_agg) {
-        eventSource_orders_agg.close();
-        eventSource_orders_agg= null; // Clear reference
+    if (eventSource_selection_exposure) {
+        eventSource_selection_exposure.close();
+        eventSource_selection_exposure= null; // Clear reference
     }
 }
 
