@@ -33,7 +33,7 @@ eventSource.addEventListener('update', function(event) {
             },
             options: {
                 responsive: false,
-                scales: { y: { display: false }, x: { display: true, ticks: {font: {size: 6}} } },
+                scales: { y: { display: false }, x: { display: true, ticks: {font: {size: 12}} } },
                 plugins: { legend: { display: false } },
                 maintainAspectRatio: false,
             }

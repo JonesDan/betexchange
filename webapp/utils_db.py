@@ -103,7 +103,7 @@ def calc_order_exposure(market_id='ALL'):
 # Initialize the database (run once at start)
 def init_db():
     try:
-        with sqlite3.connect('data/mydata.db') as conn:
+        with sqlite3.connect('/data/mydata.db') as conn:
             cursor = conn.cursor()
             for table in sqlite_tables:
                 sqlstring = ', '.join([f"{tbl['name']} {tbl['type']}" for tbl in sqlite_tables[table]])
@@ -116,7 +116,7 @@ def init_db():
         return f"Error with creating tables {e}"
     
 def init_selected_markets():
-    filename = 'data/selected_markets.pkl'
+    filename = '/data/selected_markets.pkl'
     with open(filename, 'wb') as f:
         pickle.dump([], f)
 
@@ -126,7 +126,7 @@ def upsert_sqlite(table, data):
     values2 = ', '.join(['"' + data[col['name']] + '"' if isinstance(data[col['name']], str) else str(data[col['name']]) for col in sqlite_tables[table] if col['name'] in data])
 
     create_sample_files(table, data)
-    with sqlite3.connect('data/mydata.db') as conn:
+    with sqlite3.connect('/data/mydata.db') as conn:
         cursor = conn.cursor()
         cursor.execute(f'REPLACE INTO {table} ({columns}) VALUES ({values2})')
         conn.commit()
@@ -136,7 +136,7 @@ def dict_factory(cursor, row):
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
 def query_sqlite(query):
-    conn = sqlite3.connect('data/mydata.db')
+    conn = sqlite3.connect('/data/mydata.db')
     conn.row_factory = dict_factory
     cursor = conn.cursor()
 

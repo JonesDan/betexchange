@@ -15,6 +15,7 @@ from stream_orders import stream_orders
 import multiprocessing
 import pickle
 import time
+import json
 
 # Logging
 logger = init_logger('app')
@@ -37,7 +38,7 @@ Session(app)  # Initialize Flask-Session
 
 # Redis Client
 redis_client = redis.Redis(host='redis', port=6379)
-current_process = {'process_price': None, 'process_order': None}
+# current_process = {'process_price': None, 'process_order': None}
 
 ### Flask apps
 
@@ -73,7 +74,8 @@ def login():
             key = Fernet.generate_key()
             cipher = Fernet(key)
             encrypted_password = cipher.encrypt(password.encode())
-            session['e'] = encrypted_password
+            encrypted_password_str = encrypted_password.decode()  # Convert bytes to string
+            session['e'] = encrypted_password_str
 
             with open('/data/e.key', "wb") as file:
                 file.write(key)
@@ -84,7 +86,7 @@ def login():
             return redirect(url_for("eventList"))
         
         except Exception as e:
-            logger.error(f'Login: error {e}')
+            logger.error(f'Login: error {e}', exc_info=True)
             flash(f"Login failed: {e}", "danger")
             return redirect(url_for("login"))
 
@@ -103,14 +105,11 @@ def eventList():
 
         events = list_events(trading)
         logger.info(f'EventList: Number of events pulled {len(events)}')
-        redis_client.publish('event_control', "Na")  # Publish to Redis
-
-        logger.info(f'EventList: Pulled {len(events)}')
 
         return render_template('eventList.html', events=events)
       
     except Exception as e:
-        logger.error(f'EventList: error {e}')
+        logger.error(f'EventList: error {e}', exc_info=True)
         flash(f"Error pulling EventList: {e}", "danger")
         return redirect(url_for("login"))
 
@@ -151,7 +150,7 @@ def eventDetail(event_id):
         return render_template('eventDetail.html', markets=market_ids_list, event_name=event_name)
     
     except Exception as e:
-        logger.error(f'Eventdetail: error {e}')
+        logger.error(f'Eventdetail: error {e}', exc_info=True)
         flash(f"Error pulling EventDetail: {e}", "danger")
         return redirect(url_for("login"))
 
@@ -172,8 +171,22 @@ def get_prices():
                                 m.selection_name AS selection_name,
                                 p.side AS side,
                                 MAX(p.publish_time) AS publish_time,
-                                GROUP_CONCAT(p.price) AS priceList, 
-                                GROUP_CONCAT(p.size) AS sizeList,
+                                (
+                                    SELECT GROUP_CONCAT(p2.price)
+                                    FROM price p2
+                                    WHERE p2.market_id = p.market_id 
+                                    AND p2.selection_id = p.selection_id 
+                                    AND p2.side = p.side
+                                    ORDER BY p2.level ASC
+                                ) AS priceList,
+                                (
+                                    SELECT GROUP_CONCAT(p3.size)
+                                    FROM price p3
+                                    WHERE p3.market_id = p.market_id 
+                                    AND p3.selection_id = p.selection_id 
+                                    AND p3.side = p.side
+                                    ORDER BY p3.level ASC
+                                ) AS sizeList,
                                 SUM(s.exposure) AS exposure
                             FROM price p
                             JOIN market_catalogue m
@@ -191,10 +204,10 @@ def get_prices():
             price['priceList'] = price['priceList'].split(',')
             price['sizeList'] = price['sizeList'].split(',')
     
-        return jsonify({'selected_markets': prices, 'update_time': price[0]['publish_time']})
+        return jsonify({'selected_markets': prices, 'update_time': prices[0]['publish_time']})
     
     except Exception as e:
-        logger.error(f'getPrices: error {e}')
+        logger.error(f'getPrices: error {e}', exc_info=True)
         pass
 
 
@@ -253,7 +266,7 @@ def place_orders():
         logger.info(f'placeOrder: response = {response_str}')
     
     except Exception as e:
-        logger.error(f'placeOrder: error {e}')
+        logger.error(f'placeOrder: error {e}', exc_info=True)
         response_str = 'Error in order code. Check Logs'
         pass
 
@@ -262,27 +275,14 @@ def place_orders():
 
 @app.route('/stop_process', methods=['POST'])
 def stop_process():
-    global current_process
 
-    # Stop existing process if it's running
-    if current_process['process_price'] is not None and current_process['process_price'].is_alive():
-        logger.info("stopProcess: 🛑 Stopping existing price process...")
-        current_process['process_price'].terminate()
-        current_process['process_price'].join()
-        current_process['process_price'] = None
-
-    if current_process['process_order'] is not None and current_process['process_order'].is_alive():
-        logger.info("stopProcess:🛑 Stopping existing order process...")
-        current_process['process_order'].terminate()
-        current_process['process_order'].join()
-        current_process['process_order'] = None
+    logger.info(f'stopProcess: Publish to redis to stop price stream')
+    redis_client.publish('event_control', json.dumps({'event_id':False}))  # Publish to Redis
 
     return "Process stopped"
 
 @app.route('/start_process', methods=['POST'])
-def start_process():
-    global current_process
-    
+def start_process():   
     data = request.get_json()
     url = data.get('url')  # This is the URL sent from JavaScript
     event_id = url.split('/')[-1]
@@ -291,28 +291,9 @@ def start_process():
     app_key = session.get('app_key', 'No app key found')
     e = session.get('e', 'No e token found')
 
-
-    # Stop existing process if it's running
-    if current_process['process_price'] is not None and current_process['process_price'].is_alive():
-        logger.info("startProcess: 🛑 Stopping existing price process...")
-        current_process['process_price'].terminate()
-        current_process['process_price'].join()
-
-    if current_process['process_order'] is not None and current_process['process_order'].is_alive():
-        logger.info("startProcess: 🛑 Stopping existin order process...")
-        current_process['process_order'].terminate()
-        current_process['process_order'].join()
-
-    # Start new process
-    new_proc_price = multiprocessing.Process(target=stream_price, args=(username, app_key, e, context, event_id))
-    new_proc_price.start()
-    current_process['process_price'] = new_proc_price
-    logger.info("startProcess: ✅ Started new price background process.")
-    # Start new process
-    # new_proc_order = multiprocessing.Process(target=stream_orders, args=(username, app_key, e,  context))
-    # new_proc_order.start()
-    # current_process['process_order'] = new_proc_order
-    # logger.info("startProcess: ✅ Started new order background process.")
+    # Publish event id for price streaming
+    logger.info(f'startProcess: Publish {event_id} to redis for price stream')
+    redis_client.publish('event_control', json.dumps({'username': username, 'app_key': app_key, 'e': e, 'context': context, 'event_id':event_id}))  # Publish to Redis
 
     return "Process started"
 
@@ -324,7 +305,7 @@ def update_selection():
 
     logger.info(f"updateSelection: {data}")
 
-    with open('data/selected_markets.pkl', 'rb') as f:
+    with open('/data/selected_markets.pkl', 'rb') as f:
         my_list = pickle.load(f)
     
     if add_remove == 'add':
@@ -332,7 +313,7 @@ def update_selection():
     elif add_remove == 'remove':
         my_list.remove(str(market_id))
 
-    with open('data/selected_markets.pkl', 'wb') as f:
+    with open('/data/selected_markets.pkl', 'wb') as f:
         pickle.dump(my_list, f)
 
     return "Updated Selection"

@@ -5,7 +5,8 @@ from betfairlightweight.filters import (
     streaming_market_filter,
     streaming_market_data_filter,
 )
-from multiprocessing import Queue
+import queue
+# from multiprocessing import Queue
 import threading
 from tenacity import retry, wait_exponential
 from betfairlightweight import StreamListener
@@ -13,10 +14,11 @@ from betfairlightweight import BetfairError
 from utils import init_logger
 from utils_db import upsert_sqlite, create_sample_files
 from flask import Flask
-import os
 from cryptography.fernet import Fernet
 import pickle
-import time
+import redis
+import json
+
 
 
 class Streaming(threading.Thread):
@@ -35,7 +37,7 @@ class Streaming(threading.Thread):
         self.conflate_ms = conflate_ms
         self.streaming_unique_id = streaming_unique_id
         self.stream = None
-        self.output_queue = Queue()
+        self.output_queue = queue.Queue()
         self.listener = StreamListener(output_queue=self.output_queue)
         self.logger = init_logger('streaming_class')
 
@@ -73,13 +75,16 @@ class Streaming(threading.Thread):
 
 def stream_price(username, app_key, e, context, event_id):
     try:
-        logger = init_logger('stream_price')
+        logger = init_logger('stream_price_event')
+
+        redis_client = redis.Redis(host='redis', port=6379)
 
         with open('/data/e.key', "rb") as f:
             key = f.read().strip()
 
         cipher = Fernet(key)
-        password = cipher.decrypt(e).decode()
+        # password = cipher.decrypt(e).decode()
+        password = cipher.decrypt(e.encode()).decode()
 
         trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs=f'/certs/{context}')
 
@@ -97,7 +102,7 @@ def stream_price(username, app_key, e, context, event_id):
             event_ids=[str(event_id)]
         )
         market_data_filter = streaming_market_data_filter(
-            fields=["EX_BEST_OFFERS", "EX_MARKET_DEF"], ladder_levels=10
+            fields=["EX_BEST_OFFERS", "EX_MARKET_DEF"], ladder_levels=5
         )
 
         # create streaming object
@@ -112,17 +117,14 @@ def stream_price(username, app_key, e, context, event_id):
         # with app.app_context():
         while True:
             logger.info("📡 Still Listening...")
-            for x in range(100):
-                logger.info(f"{x}")
-                time.sleep(1)
             market_books = streaming.output_queue.get()
-            # try:
-            #     with open('data/selected_markets.pkl', 'rb') as f:
-            #         selected_market_list = pickle.load(f)
-            # except Exception as e:
-            #     logger.error(f'{e}')
-            #     pass
-            selected_market_list = []
+            try:
+                with open('/data/selected_markets.pkl', 'rb') as f:
+                    selected_market_list = pickle.load(f)
+            except Exception as e:
+                logger.error(f'{e}')
+                pass
+
             logger.info('New Price Update')
             for market_book in market_books:
                 data = market_book.streaming_update
@@ -148,7 +150,9 @@ def stream_price(username, app_key, e, context, event_id):
                             logger.info(f'Upsert price data {summary}')
                             upsert_sqlite('price', summary)
                             if data['id'] in selected_market_list:
-                                sse.publish(data=summary, type='update', channel='prices')
+                                # sse.publish(data=summary, type='update', channel='prices')
+                                redis_client.publish('prices', json.dumps({ "data": summary,"type": "update"}))
+                                logger.info('Published data to prices redis')
                                 
                         for back in selection.get('batb',[]):
                             summary = {'key': f"{market_id}-{selection['id']}-BACK-{back[0]}",
@@ -164,13 +168,10 @@ def stream_price(username, app_key, e, context, event_id):
                             logger.info(f'Upsert price data {summary}')
                             upsert_sqlite('price', summary)
                             if data['id'] in selected_market_list:
-                                sse.publish(data=summary, type='update', channel='prices')
-                                logger.info('Published data to prices sse')
+                                # sse.publish(data=summary, type='update', channel='prices')
+                                redis_client.publish('prices', json.dumps({ "data": summary,"type": "update"}))
+                                logger.info('Published data to prices redis')
 
     except Exception as e:
-        logger.error(f"Error while streaming event_id: {event_id}\n{e}")
+        logger.error(f"Error while streaming event_id: {event_id} error:{e}", exc_info=True)
         pass
-
-# with open('data/selected_markets.pkl', 'wb') as f:
-#     pickle.dump([1.242779508], f)
-# stream_price('jonesy2005', 'mzOge8pJMvubUDpV', 'U6jGY=wevtX8$C!', 'DEV', 34238027)

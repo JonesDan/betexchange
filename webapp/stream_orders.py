@@ -8,16 +8,21 @@ from flask_sse import sse
 from flask import Flask
 from cryptography.fernet import Fernet
 import pickle
+import redis
+import json
 
 def stream_orders(username, app_key, e, context):
 
     logger = init_logger('stream_orders')
 
+    redis_client = redis.Redis(host='redis', port=6379)
+
     with open('/data/e.key', "rb") as f:
         key = f.read().strip()
 
     cipher = Fernet(key)
-    password = cipher.decrypt(e).decode()
+    # password = cipher.decrypt(e).decode()
+    password = cipher.decrypt(e.encode()).decode()
     trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs=f'/certs/{context}')
     # trading = betfairlightweight.APIClient(username, e, app_key=app_key, certs=f'/Users/danieljones/betexchange/certs/dev')
     resp = trading.login()
@@ -59,7 +64,7 @@ def stream_orders(username, app_key, e, context):
         while True:
             market_data = output_queue.get()
 
-            with open('data/selected_markets.pkl', 'rb') as f:
+            with open('/data/selected_markets.pkl', 'rb') as f:
                 selected_market_list = pickle.load(f)
 
             logger.info('New Order Update')
@@ -88,9 +93,11 @@ def stream_orders(username, app_key, e, context):
                         market_catalogue_dict = query_sqlite(f"SELECT market_id, selection_id, market_name, selection_name FROM market_catalogue m WHERE key = '{data['market_id']}_{data['selection_id']}'")
                         data['market_name'] = market_catalogue_dict[0]['market_name']
                         data['selection_name'] = market_catalogue_dict[0]['selection_name']
-                        sse.publish(data=data, type='update', channel='orders')
+                        # sse.publish(data=data, type='update', channel='orders')
+                        redis_client.publish('orders', json.dumps({ "data": data,"type": "update"}))
                         logger.info('Published data to order sse')
 
-                        sse.publish(data=results, type='update', channel='selection_exposure')
+                        # sse.publish(data=results, type='update', channel='selection_exposure')
+                        redis_client.publish('selection_exposure', json.dumps({ "data": results,"type": "update"}))
                         logger.info('Published data to selection_exposure sse')
                         

@@ -83,11 +83,11 @@ function addMarketToTable(market_id) {
                 
                 console.log(`Pull Prices for ${market.market_name}_${market.selection_name}`)
 
-                let rowColor = market.b_l === "BACK" ? "table-info" : "table-warning";
-                let exp_id = market.b_l === "BACK" ? `${market.market_id}_${market.selection_id}_expW` : `${market.market_id}_${market.selection_id}_expL`;
+                let rowColor = market.side === "BACK" ? "table-info" : "table-warning";
+                let exp_id = market.side === "BACK" ? `${market.market_id}_${market.selection_id}_expW` : `${market.market_id}_${market.selection_id}_expL`;
                 let exp_text_col = parseFloat(`${market.ex}`) >= 0 ? 'text-success' : 'text-danger';
 
-                let hedge_input = market.b_l === "BACK" ? `<select>
+                let hedge_input = market.side === "BACK" ? `<select>
                                                                 <option value=""></option>
                                                                 <option value="X">X</option>
                                                                 <option value="Y">Y</option>
@@ -110,10 +110,10 @@ function addMarketToTable(market_id) {
                         <td>
                             ${hedge_input}
                         </td>
-                        <td class="fs-6">${market.b_l}</td>
+                        <td class="fs-6">${market.side}</td>
                         <td id="size-${market.id}" class="fs-6"><input type="number" class="form-control form-control-sm  w-100" min="0"></td>
                         <td id="sizeMin-${market.id}" class="fs-6"><input type="number" class="form-control form-control-sm  w-100" min="0" value="0"></td>
-                        <td id="min-price-${market.id}" class="min-price fs-6">
+                        <td id="min-price-${market.id}" class="min-price fs-6"><input type="number" class="form-control form-control-sm  w-100" min="0" value="0"></td>
                         <td>
                             <canvas class="chart-container" id="chart-${market.id}" height="50"></canvas>
                         </td>
@@ -134,7 +134,7 @@ function addMarketToTable(market_id) {
                     },
                     options: {
                         responsive: false,
-                        scales: { y: { display: false }, x: { display: true, ticks: {font: {size: 6}} } },
+                        scales: { y: { display: false }, x: { display: true, ticks: {font: {size: 12}} } },
                         plugins: {
                             legend: {
                                 display: false
