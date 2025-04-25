@@ -144,7 +144,7 @@ def stream_price(username, app_key, e, context, event_id):
                                     'level': lay[0],
                                     'price': lay[1],
                                     'size': lay[2],
-                                    'publish_time': publish_time.isoformat()
+                                    'publish_time': publish_time.strftime('%Y-%m-%dT%HH-%MM-%SS')
                                     }
                             
                             logger.info(f'Upsert price data {summary}')
@@ -162,7 +162,7 @@ def stream_price(username, app_key, e, context, event_id):
                                     'level': back[0],
                                     'price': back[1],
                                     'size': back[2],
-                                    'publish_time': publish_time.isoformat()
+                                    'publish_time': publish_time.strftime('%Y-%m-%dT%HH-%MM-%SS')
                                     }
                             
                             logger.info(f'Upsert price data {summary}')

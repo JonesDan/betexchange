@@ -11,41 +11,92 @@ import pickle
 import redis
 import json
 
+def upload_orders(data, market_id, logger):
+    try:
+        redis_client = redis.Redis(host='redis', port=6379)
+
+        create_sample_files('raw_stream_order',data)
+
+        price = data['price_size']['Price']
+        size = data['price_size']['Size']
+        placed_date = data['placed_date'].strftime('%Y-%m-%dT%HH-%MM-%SS') if data['placed_date'] else None
+        matched_date = data['matched_date'].strftime('%Y-%m-%dT%HH-%MM-%SS') if data['matched_date'] else None
+        cancelled_date = data['cancelled_date'].strftime('%Y-%m-%dT%HH-%MM-%SS') if data['cancelled_date'] else None
+        data_adj = {'market_id': market_id, 'price': price, 'size': size, 'placed_date': placed_date, 'matched_date': matched_date, 'cancelled_date': cancelled_date}
+        summary = data | data_adj
+
+        logger.info(f'Upsert order data {summary}')
+        upsert_sqlite('orders', summary)
+
+        logger.info('Calc selection exposure')
+        results = calc_order_exposure(summary['market_id'])
+        logger.info(results)
+
+        market_catalogue_dict = query_sqlite(f"SELECT market_id, selection_id, market_name, selection_name FROM market_catalogue m WHERE key = '{summary['market_id']}-{summary['selection_id']}'")
+        if len(market_catalogue_dict) > 0:
+            summary['market_name'] = market_catalogue_dict[0]['market_name']
+            summary['selection_name'] = market_catalogue_dict[0]['selection_name']
+
+            sse_keys = ['bet_id', 
+                        'average_price_matched', 
+                        'bsp_liability', 
+                        'handicap', 
+                        'market_id', 
+                        'matched_date',
+                        'placed_date',
+                        'cancelled_date',
+                        'order_type', 
+                        'persistence_type', 
+                        'placed_date', 
+                        'selection_id', 
+                        'side', 
+                        'size_cancelled',
+                        'size_lapsed',
+                        'size_matched',
+                        'size_remaining',
+                        'size_voided',
+                        'status',
+                        'lapsed_date',
+                        'lapse_status_reason_code',
+                        'cancelled_date',
+                        'price',
+                        'size']
+            
+            summary2 = {k:v for k,v in summary.items() if k in sse_keys}
+
+            redis_client.publish('orders', json.dumps({ "data": summary2,"type": "update"}))
+            logger.info('Published data to order sse', summary2)
+
+            redis_client.publish('selection_exposure', json.dumps({ "data": results,"type": "update"}))
+            logger.info('Published data to selection_exposure sse')
+            logger.info('Published data to order sse', results)
+    
+    except Exception as e:
+        logger.error(f'Error uploading orders {e}', exc_info=True)
+        pass
+
+
+
 def stream_orders(username, app_key, e, context):
 
     logger = init_logger('stream_orders')
-
-    redis_client = redis.Redis(host='redis', port=6379)
 
     with open('/data/e.key', "rb") as f:
         key = f.read().strip()
 
     cipher = Fernet(key)
-    # password = cipher.decrypt(e).decode()
     password = cipher.decrypt(e.encode()).decode()
     trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs=f'/certs/{context}')
-    # trading = betfairlightweight.APIClient(username, e, app_key=app_key, certs=f'/Users/danieljones/betexchange/certs/dev')
     resp = trading.login()
 
     logger.info(f'response from betfair login: {resp.login_status}')
-
-    app = Flask(__name__)
-    app.config["REDIS_URL"] = "redis://redis:6379"
-    app.register_blueprint(sse, url_prefix='/stream')
 
     logger.info('Pull Current Orders')
     current_orders = trading.betting.list_current_orders()
     for order in current_orders.orders:
         data = vars(order)
-        price = data['price_size']['Price']
-        size = data['price_size']['Size']
-        placed_date = data['placed_date'].strftime('%Y-%m-%dT%HH-%MM-%SS')
-        data_adj = {'price': price, 'size': size, 'placed_date': placed_date}
-        summary = data | data_adj
-        upsert_sqlite('orders', summary)
-    
-    results = calc_order_exposure()
-    logger.info(f'Current Order exposure calc example\n{results[0]}')
+        market_id = order['market_id']
+        upload_orders(data, market_id, logger)
 
     # create queue
     output_queue = queue.Queue()
@@ -60,44 +111,39 @@ def stream_orders(username, app_key, e, context):
 
     logger.info("📡 Listening to Betfair order stream...")
 
-    with app.app_context():
-        while True:
-            market_data = output_queue.get()
+    while True:
+        market_data = output_queue.get()
 
-            with open('/data/selected_markets.pkl', 'rb') as f:
-                selected_market_list = pickle.load(f)
+        logger.info('New Order Update')
 
-            logger.info('New Order Update')
+        for market in market_data:
+            market_id = market['streaming_update']['id']
+            for order in market['orders']:
+                data = vars(order)
+                upload_orders(data, market_id, logger)
 
-            for market in market_data:
-                market_id = market['streaming_update']['id']
-                for order in market['orders']:
-                    data = vars(order)
-                    create_sample_files('raw_stream_order',data)
+                # price = data['price_size']['Price']
+                # size = data['price_size']['Size']
+                # placed_date = data['placed_date'].strftime('%Y-%m-%dT%HH-%MM-%SS')
+                # data_adj = {'market_id': market_id, 'price': price, 'size': size, 'placed_date': placed_date}
+                # summary = data | data_adj
 
-                    price = data['price_size']['Price']
-                    size = data['price_size']['Size']
-                    placed_date = data['placed_date'].strftime('%Y-%m-%dT%HH-%MM-%SS')
-                    data_adj = {'market_id': market_id, 'price': price, 'size': size, 'placed_date': placed_date}
-                    summary = data | data_adj
+                # logger.info('Upsert order data')
+                # upsert_sqlite('orders', summary)
 
-                    logger.info('Upsert order data')
-                    upsert_sqlite('orders', summary)
+                # logger.info('Calc selection exposure')
+                # results = calc_order_exposure(summary['market_id'])
 
-                    logger.info('Calc selection exposure')
-                    results = calc_order_exposure(summary['market_id'])
+                # logger.info(results)
 
-                    logger.info(results)
+                # market_catalogue_dict = query_sqlite(f"SELECT market_id, selection_id, market_name, selection_name FROM market_catalogue m WHERE key = '{data['market_id']}_{data['selection_id']}'")
+                # data['market_name'] = market_catalogue_dict[0]['market_name']
+                # data['selection_name'] = market_catalogue_dict[0]['selection_name']
+                # # sse.publish(data=data, type='update', channel='orders')
+                # redis_client.publish('orders', json.dumps({ "data": data,"type": "update"}))
+                # logger.info('Published data to order sse')
 
-                    if market_id in selected_market_list:
-                        market_catalogue_dict = query_sqlite(f"SELECT market_id, selection_id, market_name, selection_name FROM market_catalogue m WHERE key = '{data['market_id']}_{data['selection_id']}'")
-                        data['market_name'] = market_catalogue_dict[0]['market_name']
-                        data['selection_name'] = market_catalogue_dict[0]['selection_name']
-                        # sse.publish(data=data, type='update', channel='orders')
-                        redis_client.publish('orders', json.dumps({ "data": data,"type": "update"}))
-                        logger.info('Published data to order sse')
-
-                        # sse.publish(data=results, type='update', channel='selection_exposure')
-                        redis_client.publish('selection_exposure', json.dumps({ "data": results,"type": "update"}))
-                        logger.info('Published data to selection_exposure sse')
-                        
+                # # sse.publish(data=results, type='update', channel='selection_exposure')
+                # redis_client.publish('selection_exposure', json.dumps({ "data": results,"type": "update"}))
+                # logger.info('Published data to selection_exposure sse')
+                    

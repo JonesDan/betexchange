@@ -141,7 +141,7 @@ def eventDetail(event_id):
         # Get markets and build market cache
         list_market_catalogue(trading, event_id)
         market_ids_list = query_sqlite("SELECT DISTINCT event, market_id, market_name, printf('%.2f', total_matched) AS total_matched FROM market_catalogue")
-        logger.info(market_ids_list)
+        logger.info(market_ids_list[0])
 
         event_name =  market_ids_list[0]['event']
 
@@ -163,39 +163,42 @@ def get_prices():
 
         logger.info(f'getPrices: Pull prices for {market_id}')
 
-        prices = query_sqlite(f"""
-                            SELECT 
-                                p.market_id AS market_id,
-                                m.market_name AS market_name,
-                                p.selection_id AS selection_id,
-                                m.selection_name AS selection_name,
-                                p.side AS side,
-                                MAX(p.publish_time) AS publish_time,
-                                (
-                                    SELECT GROUP_CONCAT(p2.price)
-                                    FROM price p2
-                                    WHERE p2.market_id = p.market_id 
-                                    AND p2.selection_id = p.selection_id 
-                                    AND p2.side = p.side
-                                    ORDER BY p2.level ASC
-                                ) AS priceList,
-                                (
-                                    SELECT GROUP_CONCAT(p3.size)
-                                    FROM price p3
-                                    WHERE p3.market_id = p.market_id 
-                                    AND p3.selection_id = p.selection_id 
-                                    AND p3.side = p.side
-                                    ORDER BY p3.level ASC
-                                ) AS sizeList,
-                                SUM(s.exposure) AS exposure
-                            FROM price p
-                            JOIN market_catalogue m
-                                ON p.market_id = m.market_id AND p.selection_id = m.selection_id
-                            LEFT JOIN selection_exposure s
-                                ON m.market_id = s.market_id  AND m.selection_id = s.selection_id
-                            WHERE p.market_id = '{market_id}'
-                            GROUP BY p.market_id, m.market_name, p.selection_id, m.selection_name, p.side
-                            """)
+        attempt = 0
+        prices = []
+        while len(prices) == 0 and attempt < 3:
+            prices = query_sqlite(f"""
+                                SELECT 
+                                    p.market_id AS market_id,
+                                    m.market_name AS market_name,
+                                    p.selection_id AS selection_id,
+                                    m.selection_name AS selection_name,
+                                    p.side AS side,
+                                    MAX(p.publish_time) AS publish_time,
+                                    GROUP_CONCAT(p.price) AS priceList,
+                                    GROUP_CONCAT(p.size) AS sizeList,
+                                    GROUP_CONCAT(p.level) AS levelList,
+                                    CASE WHEN p.side = 'BACK' THEN printf('%.2f', AVG(s.exposure)) ELSE 0 END AS exposure
+                                FROM (
+                                    SELECT 
+                                        market_id, 
+                                        selection_id, 
+                                        side, 
+                                        publish_time, 
+                                        price, 
+                                        size, 
+                                        level
+                                    FROM price
+                                    ORDER BY market_id, selection_id, side, level
+                                ) p
+                                JOIN market_catalogue m
+                                    ON p.market_id = m.market_id AND p.selection_id = m.selection_id
+                                LEFT JOIN selection_exposure s
+                                    ON m.market_id = s.market_id  AND m.selection_id = s.selection_id
+                                WHERE p.market_id = '{market_id}'
+                                GROUP BY p.market_id, m.market_name, p.selection_id, m.selection_name, p.side
+                                """)
+            attempt+=1
+            time.sleep(1)
         
         
         logger.info(f'getPrices: Convert Prices and Size to List: {prices[0]}')
@@ -204,10 +207,49 @@ def get_prices():
             price['priceList'] = price['priceList'].split(',')
             price['sizeList'] = price['sizeList'].split(',')
     
-        return jsonify({'selected_markets': prices, 'update_time': prices[0]['publish_time']})
+        return jsonify({'selected_markets': prices, 'publish_time': prices[0]['publish_time']})
     
     except Exception as e:
         logger.error(f'getPrices: error {e}', exc_info=True)
+        pass
+
+
+@app.route('/get_orders')
+def get_orders():
+    try:
+        logger.info(f'getOrders: Pull existing orders')
+        attempt = 0
+        existing_orders = []
+        while len(existing_orders) == 0 and attempt < 3:
+            existing_orders = query_sqlite("""
+                                        SELECT 
+                                        o.bet_id, 
+                                        m.market_name, 
+                                        m.selection_name,
+                                        o.placed_date,
+                                        o.side,
+                                        o.status,
+                                        printf('%.2f', o.price) AS price,
+                                        printf('%.2f', o.size) AS size,
+                                        printf('%.2f', o.average_price_matched) AS average_price_matched,
+                                        printf('%.2f', o.size_matched) AS size_matched,
+                                        printf('%.2f', o.size_remaining) AS size_remaining,
+                                        printf('%.2f', o.size_lapsed) AS size_lapsed,
+                                        printf('%.2f', o.size_cancelled) AS size_cancelled,
+                                        printf('%.2f', o.size_voided) AS size_voided
+                                        FROM
+                                        orders o
+                                        JOIN market_catalogue m ON o.market_id = m.market_id AND o.selection_id = m.selection_id
+                                        """)
+            attempt+=1
+            time.sleep(1)
+        
+        logger.info(f'getOrders: example {existing_orders[0]}')
+
+        return jsonify(existing_orders)
+
+    except Exception as e:
+        logger.error(f'getOrders: error {e}', exc_info=True)
         pass
 
 
@@ -236,19 +278,21 @@ def place_orders():
 
             market_id = order.split('-')[0]
             selection_id = order.split('-')[1]
-            b_l = order.split('-')[2]
+            side = order.split('-')[2]
             hedge = order_details['order_details'][order]['hedge']
             if not hedge:
-                b_l2 = 'BACK' if b_l == 'batb' else 'LAY' if b_l == 'batl' else ''
                 price = float(order_details['order_details'][order]['price'])
                 size = float(order_details['order_details'][order]['size'])
                 sizeMin = float(order_details['order_details'][order]['sizeMin'])
             else:
-                b_l2 = 'LAY'
-                price = query_sqlite(f"SELECT price FROM price p WHERE key = '{market_id}-{selection_id}-batl-0'")
-                size = query_sqlite(f"SELECT exposure FROM selection_exposure p WHERE key = '{market_id}-{selection_id}'")
+                side = 'LAY'
+                price_dict = query_sqlite(f"SELECT price FROM price p WHERE key = '{market_id}-{selection_id}-LAY-3'")
+                price = price_dict[0]['price']
+                exposure = query_sqlite(f"SELECT sum(ABS(exposure)) AS size FROM selection_exposure WHERE market_id = '{market_id}'")
+                size =  round(exposure[0]['size'] / price,2)
+                logger.info(f"placeOrder: Hedge order details. seleciton_id: {selection_id}, side: {side} market_id: {market_id}, size: {size}, price: {price}, exp: {exposure}")
                 sizeMin = 0
-            thread = Thread(target=place_order, args=(trading, selection_id, b_l2, market_id, size, price, sizeMin, result_queue))
+            thread = Thread(target=place_order, args=(trading, selection_id, side, market_id, size, price, sizeMin, result_queue))
             threads.append(thread)
             thread.start()
         

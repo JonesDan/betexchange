@@ -15,12 +15,12 @@
                     place_orders("B");
                 }
     
-                if (gamepad.buttons[2].pressed) { // Detect "Z" keypress
-                    place_orders("X");
+                if (gamepad.buttons[4].pressed) { // Detect "Z" keypress
+                    place_orders("Y");
                 }
     
                 if (gamepad.buttons[3].pressed) { // Detect "B" keypress
-                    place_orders("Y");
+                    place_orders("X");
                 }
             }
     
@@ -66,7 +66,7 @@
             let rowId = row.id;
             if (rowId) {
                 let selectValue = row.cells[3].querySelector("select").value;
-                let selectValue_hedge = row.cells[4].querySelector("select").value;
+                let selectValue_hedge = row.cells[4].querySelector("select")?.value || null;
                 let sizeValue = row.cells[6].querySelector("input").value;
                 let sizeMinValue = row.cells[7].querySelector("input").value;
                 let priceValue = row.cells[8].querySelector("input").value;

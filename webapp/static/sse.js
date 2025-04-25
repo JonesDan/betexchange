@@ -4,7 +4,7 @@ const eventSource = new EventSource('/stream?channel=prices');
 eventSource.addEventListener('update', function(event) {
     // Parse the incoming data
     const data = JSON.parse(event.data);
-    chartId = `chart-${data.market_id}-${data.selection_id}-${data.b_l}`
+    chartId = `chart-${data.market_id}-${data.selection_id}-${data.side}`
     const chartInstance = Chart.getChart(chartId); // Get the chart instance by ID
 
     if (chartInstance) {
@@ -39,7 +39,7 @@ eventSource.addEventListener('update', function(event) {
             }
         })
 
-        el_updatetime.innerHTML = `Selected Markets <span class="small-text">updated_at: ${data.update_time}</span>`
+        el_updatetime.innerHTML = `Selected Markets <span class="small-text">updated_at: ${data.publish_time}</span>`
 
       } else {
         console.log("Chart not found!");
@@ -62,6 +62,26 @@ eventSource_orders.addEventListener('update', function(event) {
     updateTable(data);
 });
 
+async function fetchAndUpdateOrders() {
+    try {
+        const response = await fetch('/get_orders');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+
+        const orders = await response.json();
+
+        orders.forEach(order => {
+            updateTable(order);
+        });
+
+    } catch (error) {
+        console.error('Error fetching orders:', error);
+    }
+}
+
+
 // Function to update or insert a row in the table
 function updateTable(data) {
     const table = document.getElementById("orders_table");
@@ -70,11 +90,27 @@ function updateTable(data) {
     if (row) {
         // Update existing row
         console.log(`Update order ${data.bet_id}`);
+
+        let [placed_date, placed_time] = data.placed_date ? data.placed_date.split('T') : ['', ''];
+        let [matched_date, matched_time] = data.matched_date ? data.matched_date.split('T') : ['', ''];
+        let [canc_date, canc_time] = data.cancelled_date ? data.cancelled_date.split('T') : ['', ''];
+
         row.innerHTML = `
                     <td class="fs-6">${data.bet_id}</td>
                     <td class="fs-6">${data.market_name}</td>
-                    <td class="fs-6">${data.selection_selection}</td>
-                    <td class="fs-6">${data.placed_date}</td>
+                    <td class="fs-6">${data.selection_name}</td>
+                    <td class="fs-6">
+                        <div class="fw-bold small">${placed_date}</div>
+                        <div class="text-muted text-small">${placed_time}</div>
+                    </td>
+                    <td class="fs-6">
+                        <div class="fw-bold small">${matched_date}</div>
+                        <div class="text-muted text-small">${matched_time}</div>
+                    </td>
+                    <td class="fs-6">
+                        <div class="fw-bold small">${canc_date}</div>
+                        <div class="text-muted text-small">${canc_time}</div>
+                    </td>
                     <td class="fs-6">${data.side}</td>
                     <td class="fs-6">${data.status}</td>
                     <td class="fs-6">${data.price}</td>
@@ -91,17 +127,35 @@ function updateTable(data) {
         // Create new row if it doesn't exist
         // Create new row if it doesn't exist
         row = table.insertRow();
-        row.id = `row-${data.order_id}`;
-        let rowColor = data.b_l === "B" ? "table-info" : "table-warning";
+        row.id = `row-${data.bet_id}`;
+        let rowColor = data.side === "BACK" ? "table-info" : "table-warning";
         row.classList.add(`${rowColor}`);
 
-        console.log(`Add new order ${data.order_id}`);
+        console.log(`Add new order ${data.bet_id}`);
+
+        let [placed_date, placed_time] = data.placed_date ? data.placed_date.split('T') : ['', ''];
+        let [matched_date, matched_time] = data.matched_date ? data.matched_date.split('T') : ['', ''];
+        let [canc_date, canc_time] = data.cancelled_date ? data.cancelled_date.split('T') : ['', ''];
+
 
         row.innerHTML = `
                     <td class="fs-6">${data.bet_id}</td>
                     <td class="fs-6">${data.market_name}</td>
                     <td class="fs-6">${data.selection_name}</td>
-                    <td class="fs-6">${data.placed_date}</td>
+                    <td class="fs-6">
+                        <div class="fw-bold small">${placed_date}</div>
+                        <div class="text-muted text-small">${placed_time}</div>
+                    </td>
+                    <td class="fs-6">
+                        <div class="fw-bold small">${matched_date}</div>
+                        <div class="text-muted text-small">${matched_time}</div>
+                    </td>
+                    <td class="fs-6">
+                        <div class="fw-bold small">${canc_date}</div>
+                        <div class="text-muted text-small">${canc_time}</div>
+                    </td>
+                    <td class="fs-6">${data.matched_date}</td>
+                    <td class="fs-6">${data.cancelled_date}</td>
                     <td class="fs-6">${data.side}</td>
                     <td class="fs-6">${data.status}</td>
                     <td class="fs-6">${data.price}</td>
@@ -184,3 +238,8 @@ function stopSSE() {
 
 // Example: Stop SSE when switching pages
 window.addEventListener("beforeunload", stopSSE);
+
+window.addEventListener('load', () => {
+    console.log(`Fetching orders`)
+    fetchAndUpdateOrders()
+});

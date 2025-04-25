@@ -19,9 +19,7 @@ for message in pubsub.listen():
     if message['type'] == 'message':
         try:
             data_json = message['data'].decode('utf-8')
-            logger.info(f'{data_json}')
             data = json.loads(data_json)
-            logger.info(f'{data}')
             new_event_id = data['event_id']
             logger.info(f'New event ID: {new_event_id}')
             # Stop the current stream if active

@@ -9,7 +9,7 @@ $(".market-btn").click(function() {
         // selectedMarkets.delete(market);
         delete selectedMarkets[market_id];
         $(this).removeClass("selected");
-        deleteRowsByName(market_name)
+        deleteRowsByName(market_id, market_name)
     } else {
         selectedMarkets[market_id] = market_name
         // selectedMarkets.add(market);
@@ -39,12 +39,12 @@ function updateSelection(market_id, add_remove) {
 
 }
 
-function deleteRowsByName(name) {
+function deleteRowsByName(market_id, market_name) {
 
-    console.log(`Remove ${market_id} from selected_markets`)
+    console.log(`Remove ${market_name} ${market_id} from selection list`)
 
     updateSelection(market_id, 'remove')
-
+    
     let table = document.getElementById("market_prices_table");
     if (!table) {
         console.error("Table not found!");
@@ -52,14 +52,17 @@ function deleteRowsByName(name) {
     }
 
     let rows = table.getElementsByTagName("tr");
-
     // Loop through rows in reverse order to avoid skipping elements
+    let lastrow = 0
     for (let i = rows.length - 1; i > 0; i--) {
         let cells = rows[i].getElementsByTagName("td");
-        if (cells.length > 1 && cells[0].textContent.trim() === name) {
+        if (cells.length > 1 && cells[0].textContent.trim() === market_name) {
             table.deleteRow(i);
+            let lastrow = i
         }
     }
+    
+    table.deleteRow(lastrow+1);
 }
 
 function addMarketToTable(market_id) {
@@ -78,15 +81,25 @@ function addMarketToTable(market_id) {
             const tableBody = $("#selected-markets");
             const el_updatetime = document.getElementById("update_time");
             const selected_markets = data.selected_markets
-            el_updatetime.innerHTML = `Selected Markets <span class="small-text">updated_at: ${data.update_time}</span>`
+            el_updatetime.innerHTML = `Selected Markets <span class="small-text">updated_at: ${data.publish_time}</span>`
             selected_markets.forEach(market => {
                 
                 console.log(`Pull Prices for ${market.market_name}_${market.selection_name}`)
 
                 let rowColor = market.side === "BACK" ? "table-info" : "table-warning";
                 let exp_id = market.side === "BACK" ? `${market.market_id}_${market.selection_id}_expW` : `${market.market_id}_${market.selection_id}_expL`;
-                let exp_text_col = parseFloat(`${market.ex}`) >= 0 ? 'text-success' : 'text-danger';
+                let exp_text_col = parseFloat(`${market.exposure}`) >= 0 ? 'text-success' : 'text-danger';
 
+                // let exp  = market.side === "BACK"  ? `£${market.exposure}` : ``;
+                let exp = market.side === "BACK"
+                                            ? (market.exposure < 0
+                                                ? `-£${Math.abs(market.exposure).toFixed(2)}`
+                                                : `£${market.exposure}`
+                                                )
+                                            : '';
+
+
+                let id = `${market.market_id}-${market.selection_id}-${market.side}`
                 let hedge_input = market.side === "BACK" ? `<select>
                                                                 <option value=""></option>
                                                                 <option value="X">X</option>
@@ -94,11 +107,11 @@ function addMarketToTable(market_id) {
                                                             </select>` : '';
 
                 tableBody.append(`
-                    <tr id=${market.id} class="${rowColor}">
+                    <tr id=${id} class="${rowColor}">
                         <td class="fs-6">${market.market_name}</td>
                         <td class="fs-6">${market.selection_name}</td>
                         <td class="text-center ${exp_text_col}" id="${exp_id}">
-                            £${market.exposure}
+                            ${exp}
                         </td>
                         <td>
                             <select>
@@ -111,17 +124,17 @@ function addMarketToTable(market_id) {
                             ${hedge_input}
                         </td>
                         <td class="fs-6">${market.side}</td>
-                        <td id="size-${market.id}" class="fs-6"><input type="number" class="form-control form-control-sm  w-100" min="0"></td>
-                        <td id="sizeMin-${market.id}" class="fs-6"><input type="number" class="form-control form-control-sm  w-100" min="0" value="0"></td>
-                        <td id="min-price-${market.id}" class="min-price fs-6"><input type="number" class="form-control form-control-sm  w-100" min="0" value="0"></td>
+                        <td id="size-${id}" class="fs-6"><input type="number" class="form-control form-control-sm  w-100" min="0"></td>
+                        <td id="sizeMin-${id}" class="fs-6"><input type="number" class="form-control form-control-sm  w-100" min="0" value="0"></td>
+                        <td id="min-price-${id}" class="min-price fs-6"><input type="number" class="form-control form-control-sm  w-100" min="0" value="0"></td>
                         <td>
-                            <canvas class="chart-container" id="chart-${market.id}" height="50"></canvas>
+                            <canvas class="chart-container" id="chart-${id}" height="50"></canvas>
                         </td>
                     </tr>
                 `);
 
 
-                var ctx = document.getElementById(`chart-${market.id}`).getContext("2d");
+                var ctx = document.getElementById(`chart-${id}`).getContext("2d");
                 new Chart(ctx, {
                     type: "bar",
                     data: {

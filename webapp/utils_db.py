@@ -21,6 +21,8 @@ sqlite_tables = {
         {'name': 'market_id' , 'type': 'TEXT'},
         {'name': 'selection_id' , 'type': 'INTEGER'},
         {'name': 'placed_date' , 'type': 'TEXT'},
+        {'name': 'matched_date' , 'type': 'TEXT'},
+        {'name': 'cancelled_date' , 'type': 'TEXT'},
         {'name': 'side' , 'type': 'TEXT'},
         {'name': 'status' , 'type': 'TEXT'},
         {'name': 'price' , 'type': 'REAL'},
@@ -57,17 +59,17 @@ def calc_order_exposure(market_id='ALL'):
 
     market_filter_str = "" if market_id == 'ALL' else f"WHERE m.market_id = '{market_id}'"
     selection_exposure_data = query_sqlite(f"""
-                    WITH cte_orders AS (
+                WITH cte_orders AS (
                     SELECT
-                            m.market_id || '_' || m.selection_id AS key,
+                            m.market_id || '-' || m.selection_id AS key,
                             m.market_id AS market_id,
                             m.selection_id AS selection_id,
-                            SUM(CASE WHEN side = 'BACK' THEN o.price * o.size ELSE 0 END) AS back_winnings,
-                            SUM(CASE WHEN side = 'BACK' THEN (o.price * o.size) - o.size ELSE 0 END) AS back_profit,
+                            SUM(CASE WHEN side = 'BACK' THEN o.average_price_matched * o.size ELSE 0 END) AS back_winnings,
+                            SUM(CASE WHEN side = 'BACK' THEN (o.average_price_matched * o.size) - o.size ELSE 0 END) AS back_profit,
                             SUM(CASE WHEN side = 'BACK' THEN o.size ELSE 0 END) AS back_size,
-                            SUM(CASE WHEN side = 'LAY' THEN price * size ELSE 0 END) AS lay_winnings,
-                            SUM(CASE WHEN side = 'LAY' THEN (price * size) - size ELSE 0 END) AS lay_liability,
-                            SUM(CASE WHEN side = 'LAY' THEN size ELSE 0 END) AS lay_profit
+                            SUM(CASE WHEN side = 'LAY' THEN o.average_price_matched * o.size ELSE 0 END) AS lay_winnings,
+                            SUM(CASE WHEN side = 'LAY' THEN (o.average_price_matched * o.size) - o.size ELSE 0 END) AS lay_liability,
+                            SUM(CASE WHEN side = 'LAY' THEN o.size ELSE 0 END) AS lay_profit
                         FROM market_catalogue m
                         LEFT JOIN orders o ON o.market_id = m.market_id AND o.selection_id = m.selection_id
                         {market_filter_str}
@@ -123,12 +125,13 @@ def init_selected_markets():
 
 def upsert_sqlite(table, data):
     columns = ', '.join([col['name'] for col in sqlite_tables[table] if col['name'] in data])
-    values2 = ', '.join(['"' + data[col['name']] + '"' if isinstance(data[col['name']], str) else str(data[col['name']]) for col in sqlite_tables[table] if col['name'] in data])
+    values = [data[col['name']]for col in sqlite_tables[table] if col['name'] in data]
+    values_placeholder = ', '.join(['?' for col in sqlite_tables[table] if col['name'] in data])
 
     create_sample_files(table, data)
     with sqlite3.connect('/data/mydata.db') as conn:
         cursor = conn.cursor()
-        cursor.execute(f'REPLACE INTO {table} ({columns}) VALUES ({values2})')
+        cursor.execute(f'REPLACE INTO {table} ({columns}) VALUES ({values_placeholder})', values)
         conn.commit()
     
 
@@ -167,12 +170,22 @@ def datetime_serializer(obj):
         return obj.isoformat()
     raise TypeError(f"Type {type(obj)} not serializable")
 
+def safe_dict(data):
+    def make_safe(value):
+        try:
+            json.dumps(value, default=datetime_serializer)
+            return value
+        except (TypeError, ValueError):
+            return str(value)  # or None, or skip logic
+
+    return {k: make_safe(v) for k, v in data.items()}
+
 def create_sample_files(filename, data):
     try:
         filepath = f'sample/{filename}.json'
         if not os.path.exists(filepath):
             with open(filepath, 'w') as json_file:
-                json.dump(data, json_file, indent=4, default=datetime_serializer)
+                json.dump(safe_dict(data), json_file, indent=4, default=datetime_serializer)
             print(f"File created and data written to: {filepath}")
         return f"File created and data written to: {filepath}"
     

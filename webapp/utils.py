@@ -39,33 +39,35 @@ def reset_logger(filename):
     # Clear log file
     open(f'logs/{filename}.log', 'w').close()
 
-    logger = init_logger(filename)
-
             
 def place_order(trading, selection_id, b_l, market_id, size, price, sizeMin, result_queue):
-    # placing an order
-    instructions = []
-    order_response = []
+    try:
+        # placing an order
+        instructions = []
+        order_response = []
 
-    limit_order = filters.limit_order(size=size, price=price, persistence_type="LAPSE", time_in_force="FILL_OR_KILL", min_fill_size=sizeMin)
-    instruction = filters.place_instruction(
-        order_type="LIMIT",
-        selection_id=selection_id,
-        side=b_l,
-        limit_order=limit_order,
-    )
-    instructions.append(instruction)
-    
-    place_orders = trading.betting.place_orders(
-        market_id=market_id, instructions=instructions  # list
-    )
+        limit_order = filters.limit_order(size=size, price=price, persistence_type="LAPSE", time_in_force="FILL_OR_KILL", min_fill_size=sizeMin)
+        instruction = filters.place_instruction(
+            order_type="LIMIT",
+            selection_id=selection_id,
+            side=b_l,
+            limit_order=limit_order,
+        )
+        instructions.append(instruction)
+        
+        place_orders = trading.betting.place_orders(
+            market_id=market_id, instructions=instructions  # list
+        )
 
-    order_response += place_orders.place_instruction_reports
+        order_response += place_orders.place_instruction_reports
 
-    result = '\n'.join([f"Status: {order.status}, BetId: {order.bet_id}, Average Price Matched: {order.average_price_matched}" for order in order_response])
+        result = '\n'.join([f"Status: {order.status}, BetId: {order.bet_id}, Average Price Matched: {order.average_price_matched}" for order in order_response])
+    except Exception as e:
+        result = f"Error placing order {e}"
+        pass
+
     result_queue.put(result)
 
-    return(result)
 
 def list_market_catalogue(trading, event_id):
 
@@ -93,7 +95,7 @@ def list_market_catalogue(trading, event_id):
         desc = market.description
 
         for x in market.runners:
-            data = {'key': f"{market['market_id']}_{x.selection_id}", 'market_name':market_name, 'market_id': market_id, 'start_time': start_time.strftime('%Y-%m-%dTHH:MM:SS'), 'selection_name': x.runner_name, 'selection_id': x.selection_id, 'event': event, 'total_matched': total_matched, 'desc': desc}
+            data = {'key': f"{market['market_id']}-{x.selection_id}", 'market_name':market_name, 'market_id': market_id, 'start_time': start_time.strftime('%Y-%m-%dTHH:MM:SS'), 'selection_name': x.runner_name, 'selection_id': x.selection_id, 'event': event, 'total_matched': total_matched, 'desc': desc}
             market_catalogue_list.append(data)
             upsert_sqlite('market_catalogue', data)
 
