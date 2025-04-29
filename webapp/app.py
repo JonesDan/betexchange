@@ -5,17 +5,15 @@ from threading import Thread
 import redis
 import os
 import betfairlightweight
-from utils import init_logger, place_order, list_market_catalogue, list_events
+from utils import init_logger, place_order, list_market_catalogue, list_events, get_betfair_client_from_flask_session
 from utils_db import query_sqlite, init_db, delete_sample_files, init_selected_markets
-import shelve
 import queue
 from cryptography.fernet import Fernet
-from stream_price import stream_price
-from stream_orders import stream_orders
-import multiprocessing
 import pickle
 import time
 import json
+from datetime import datetime
+from millify import millify
 
 # Logging
 logger = init_logger('app')
@@ -96,12 +94,7 @@ def eventList():
     try:
         logger.info(f'EventList: Pull List of Events')
 
-        username = session.get('username', 'No name found')
-        app_key = session.get('app_key', 'No app key found')
-        session_token = session.get('session_token', 'No session token found')
-
-        trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
-        trading.session_token = session_token  # Restore session token
+        trading = get_betfair_client_from_flask_session(session)
 
         events = list_events(trading)
         logger.info(f'EventList: Number of events pulled {len(events)}')
@@ -114,8 +107,8 @@ def eventList():
         return redirect(url_for("login"))
 
 
-@app.route('/eventDetail/<int:event_id>')
-def eventDetail(event_id):
+@app.route('/eventList/<event_name>/<int:event_id>')
+def eventDetail(event_name, event_id):
     try:
         logger.info(f'EventDetail: Pull event detail for {event_id}')
 
@@ -126,34 +119,38 @@ def eventDetail(event_id):
         logger.info(f'EventDetail: Clear selected_markets shelve')
         init_selected_markets()
 
-        logger.info(f'EventDetail: Pull event detail for {event_id}')
-
-        # Get Sessions details
-        username = session.get('username', 'No name found')
-        app_key = session.get('app_key', 'No app key found')
-        session_token = session.get('session_token', 'No session token found')
-        
-        trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
-        trading.session_token = session_token  # Restore session token
-
-        logger.info(f'EventDetail: Pull Markets')
-
-        # Get markets and build market cache
-        list_market_catalogue(trading, event_id)
-        market_ids_list = query_sqlite("SELECT DISTINCT event, market_id, market_name, printf('%.2f', total_matched) AS total_matched FROM market_catalogue")
-        logger.info(market_ids_list[0])
-
-        event_name =  market_ids_list[0]['event']
-
-        logger.info(f'EventDetail: Pulled {len(market_ids_list)} Markets')
-
-        return render_template('eventDetail.html', markets=market_ids_list, event_name=event_name)
+        return render_template('eventDetail.html', event_name=event_name)
     
     except Exception as e:
         logger.error(f'Eventdetail: error {e}', exc_info=True)
         flash(f"Error pulling EventDetail: {e}", "danger")
-        return redirect(url_for("login"))
+        return redirect(url_for("eventList"))
 
+@app.route('/refresh_markets', methods=['POST'])
+def refresh_markets():
+    try:
+        data = request.get_json()
+        url = data.get('url')
+        event_id = url.split('/')[-1]
+
+        logger.info(f'refreshMarkets: Pull Markets. Event_id {event_id}')
+
+        trading = get_betfair_client_from_flask_session(session)
+
+        list_market_catalogue(trading, event_id)
+        market_ids_list = query_sqlite("SELECT DISTINCT event, market_id, market_name, total_matched AS total_matched FROM market_catalogue")
+
+        for market in market_ids_list:
+            market['total_matched'] = millify(market['total_matched'], precision=2)
+        
+        update_time = datetime.now().strftime('%Y-%M-%dT%H:%M:%S')
+
+        return jsonify({'markets': market_ids_list, 'update_time': update_time})
+        
+    except Exception as e:
+        logger.error(f'refreshMarkets: error {e}', exc_info=True)
+        flash(f"Error refreshing markets: {e}", "danger")
+        return redirect(url_for("eventList"))
 
 @app.route('/get_prices', methods=["POST"])
 def get_prices():
@@ -257,13 +254,7 @@ def get_orders():
 @app.route('/place_orders', methods=["POST"])
 def place_orders():
     try:
-        # global trading
-        username = session.get('username', 'No name found')
-        app_key = session.get('app_key', 'No app key found')
-        session_token = session.get('session_token', 'No session token found')
-        
-        trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
-        trading.session_token = session_token  # Restore session token
+        trading = get_betfair_client_from_flask_session(session)
 
         result_queue = queue.Queue()
         threads = []

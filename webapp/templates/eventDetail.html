@@ -85,14 +85,13 @@
         <div class="tab-content mt-3" id="myTabContent">
             <div class="tab-pane fade show active" id="tab1" role="tabpanel">
                 <div class= "container-fluid">
-                    <h2 class="mb-3">Market Name / Total Matched</h2>
-                    <div class="list-group">
-                        {% for market in markets %}
-                            <button class="list-group-item list-group-item-action market-btn" data-market="{{ market.market_id }}" data-market_name="{{ market.market_name }}">
-                                {{ market.market_name }} / (£{{market.total_matched}})
-                            </button>
-                        {% endfor %}
+                    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                        <h2 class="mb-0" id="update_time_markets">Market Name / Total Matched <span class="small-text">updated_at: {{ update_time }}</span></h2>
+                        <button id="refreshBtn" class="btn btn-outline-primary">Refresh Markets</button>
                     </div>
+                    <div class="list-group" id="market-list">
+                        <!-- This list is populated by the refreshMarkets() js function -->
+                    </div> 
                 </div>
             </div>
             <div class="tab-pane fade" id="tab2" role="tabpanel">

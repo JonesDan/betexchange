@@ -132,4 +132,12 @@ def list_events(trading):
 
     return events_list
 
-    
+def get_betfair_client_from_flask_session(session):
+    username = session.get('username', 'No name found')
+    app_key = session.get('app_key', 'No app key found')
+    session_token = session.get('session_token', 'No session token found')
+
+    trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs='/certs')
+    trading.session_token = session_token  # Restore session token
+
+    return trading

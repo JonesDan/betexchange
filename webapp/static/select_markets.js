@@ -1,29 +1,26 @@
 let selectedMarkets = {}
 
-$(".market-btn").click(function() {
-    let market_id = $(this).data("market");
-    let market_name = $(this).data("market_name");
+function handleMarketButtonClick(event) {
+    const button = $(event.currentTarget);
+    const market_id = button.data("market");
+    const market_name = button.data("market_name");
 
-    // Toggle selection
     if (market_id in selectedMarkets) {
-        // selectedMarkets.delete(market);
         delete selectedMarkets[market_id];
-        $(this).removeClass("selected");
-        deleteRowsByName(market_id, market_name)
+        button.removeClass("selected");
+        deleteRowsByName(market_id, market_name);
     } else {
-        selectedMarkets[market_id] = market_name
-        // selectedMarkets.add(market);
-        $(this).addClass("selected");
-        addMarketToTable(market_id)
+        selectedMarkets[market_id] = market_name;
+        button.addClass("selected");
+        addMarketToTable(market_id);
     }
 
-    console.log(`Selected Markets ${selectedMarkets}`)
+    console.log(`Selected Markets`, selectedMarkets);
 
-    // Update the tab title with selected count
-    let count = Object.keys(selectedMarkets).length;
-    const market_counter = document.getElementById('selected_markets_tab');
-    market_counter.innerHTML = `Select Markets (${count})`;
-});
+    const count = Object.keys(selectedMarkets).length;
+    document.getElementById('selected_markets_tab').innerHTML = `Select Markets (${count})`;
+};
+
 
 function updateSelection(market_id, add_remove) {
 
@@ -166,11 +163,56 @@ function addMarketToTable(market_id) {
     });
 }
 
+
+// document.getElementById('refreshBtn').addEventListener('click', function () {
+function refreshMarkets() {
+    const currentUrl = window.location.href;
+
+    fetch('/refresh_markets', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ url: currentUrl })
+    })
+        .then(response => response.json())
+        .then(data => {
+            const listGroup = document.getElementById('market-list');
+            listGroup.innerHTML = ''; // Clear old markets
+            const market_updatetime = document.getElementById("update_time_markets");
+            market_updatetime.innerHTML = `Market Name / Total Matched <span class="small-text">updated_at: ${data.update_time}</span>`
+
+            data.markets.forEach(market => {
+                const button = document.createElement('button');
+                // button.type = 'button';
+                let cl = market.market_id in selectedMarkets ? 'list-group-item list-group-item-action market-btn selected' : 'list-group-item list-group-item-action market-btn';
+                button.className = cl;
+                button.setAttribute('data-market', market.market_id);
+                button.setAttribute('data-market_name', market.market_name);
+                button.textContent = `${market.market_name} / (${market.total_matched})`;
+                listGroup.appendChild(button);
+            });
+        })
+        .catch(error => console.error('Error fetching markets:', error));
+};
+
+// Use event delegation on a static parent (e.g., #market-list)
+$(document).on('click', '.market-btn', handleMarketButtonClick);
+
+document.addEventListener('DOMContentLoaded', function () {
+    // Execute on page load
+    refreshMarkets();
+
+    // Execute on button click
+    document.getElementById('refreshBtn').addEventListener('click', function () {
+        refreshMarkets();
+    });
+});
+
 // Start process on page load
 window.addEventListener('load', () => {
     console.log(`Start processes`)
     const currentUrl = window.location.href;
-
     fetch('/start_process', {
         method: 'POST',
         headers: {
@@ -178,6 +220,8 @@ window.addEventListener('load', () => {
         },
         body: JSON.stringify({ url: currentUrl })
     });
+
+    refreshMarkets();
 });
 
 // Stop process on page unload
