@@ -18,7 +18,7 @@ from cryptography.fernet import Fernet
 import pickle
 import redis
 import json
-
+import millify
 
 
 class Streaming(threading.Thread):
@@ -144,13 +144,13 @@ def stream_price(username, app_key, e, context, event_id):
                                     'level': lay[0],
                                     'price': lay[1],
                                     'size': lay[2],
-                                    'publish_time': publish_time.strftime('%Y-%m-%dT%HH-%MM-%SS')
+                                    'publish_time': publish_time.strftime('%Y-%m-%dT%H:%M:%S')
                                     }
                             
                             logger.info(f'Upsert price data {summary}')
                             upsert_sqlite('price', summary)
                             if data['id'] in selected_market_list:
-                                # sse.publish(data=summary, type='update', channel='prices')
+                                summary['size'] = millify(summary['size'])
                                 redis_client.publish('prices', json.dumps({ "data": summary,"type": "update"}))
                                 logger.info('Published data to prices redis')
                                 
@@ -162,13 +162,13 @@ def stream_price(username, app_key, e, context, event_id):
                                     'level': back[0],
                                     'price': back[1],
                                     'size': back[2],
-                                    'publish_time': publish_time.strftime('%Y-%m-%dT%HH-%MM-%SS')
+                                    'publish_time': publish_time.strftime('%Y-%m-%dT%H:%M:%S')
                                     }
                             
                             logger.info(f'Upsert price data {summary}')
                             upsert_sqlite('price', summary)
                             if data['id'] in selected_market_list:
-                                # sse.publish(data=summary, type='update', channel='prices')
+                                summary['size'] = millify(summary['size'])
                                 redis_client.publish('prices', json.dumps({ "data": summary,"type": "update"}))
                                 logger.info('Published data to prices redis')
 

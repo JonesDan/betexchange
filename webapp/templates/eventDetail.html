@@ -95,28 +95,25 @@
                 </div>
             </div>
             <div class="tab-pane fade" id="tab2" role="tabpanel">
-                <div class="table-responsive-sm">
-                    <h3 class="mb-4" id="update_time">Selected Markets <span class="small-text">updated_at: {{ update_time }}</span></h3>
-                    <table class="table table-bordered" id="market_prices_table">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Market Name</th>
-                                <th>Selection</th>
-                                <th>Exposure</th>
-                                <th>Button</th>
-                                <th>Hedge Button</th>
-                                <th>Side</th>
-                                <th class="wide-column">Stake</th>
-                                <th class="wide-column">Stake(Min)</th>
-                                <th class="wide-column">Odds</th>
-                                <th>Live Odds</th>
-                            </tr>
-                        </thead>
-                        <tbody id="selected-markets">
-                            <!-- Selected markets will be dynamically populated -->
-                        </tbody>
-                    </table>
-                </div>
+                <h3 class="mb-4" id="update_time">Selected Markets <span class="small-text">updated_at: {{ update_time }}</span></h3>
+                <table class="table table-bordered" id="market_prices_table">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Market Name</th>
+                            <th>Selection</th>
+                            <th>Exposure</th>
+                            <th>Button</th>
+                            <th>Hedge Button</th>
+                            <th>Side</th>
+                            <th>Stake</th>
+                            <th>Odds / Line</th>
+                            <th colspan="3">Live Odds</th>
+                        </tr>
+                    </thead>
+                    <tbody id="selected-markets">
+                        <!-- Selected markets will be dynamically populated -->
+                    </tbody>
+                </table>
             </div>
             <div class="tab-pane fade" id="tab3" role="tabpanel">
                 <div class="table-responsive-sm">
@@ -125,11 +122,11 @@
                         <thead class="table-light">
                             <tr>
                                 <th>Bet ID</th>
+                                <th>Placed</th>
+                                <th>Matched</th>
+                                <th>Canc</th>
                                 <th>Market</th>
                                 <th>Selection</th>
-                                <th>Placed Date</th>
-                                <th>Matched Date</th>
-                                <th>Cancelled Date</th>
                                 <th>Side</th>
                                 <th>Status</th>
                                 <th>Price</th>

@@ -1,67 +1,5 @@
 let selectedMarkets = {}
 
-function handleMarketButtonClick(event) {
-    const button = $(event.currentTarget);
-    const market_id = button.data("market");
-    const market_name = button.data("market_name");
-
-    if (market_id in selectedMarkets) {
-        delete selectedMarkets[market_id];
-        button.removeClass("selected");
-        deleteRowsByName(market_id, market_name);
-    } else {
-        selectedMarkets[market_id] = market_name;
-        button.addClass("selected");
-        addMarketToTable(market_id);
-    }
-
-    console.log(`Selected Markets`, selectedMarkets);
-
-    const count = Object.keys(selectedMarkets).length;
-    document.getElementById('selected_markets_tab').innerHTML = `Select Markets (${count})`;
-};
-
-
-function updateSelection(market_id, add_remove) {
-
-    console.log(`Update selected_markets Shelve`)
-
-    fetch('/update_selection', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ market_id: market_id, add_remove: add_remove })
-    });
-
-}
-
-function deleteRowsByName(market_id, market_name) {
-
-    console.log(`Remove ${market_name} ${market_id} from selection list`)
-
-    updateSelection(market_id, 'remove')
-    
-    let table = document.getElementById("market_prices_table");
-    if (!table) {
-        console.error("Table not found!");
-        return;
-    }
-
-    let rows = table.getElementsByTagName("tr");
-    // Loop through rows in reverse order to avoid skipping elements
-    let lastrow = 0
-    for (let i = rows.length - 1; i > 0; i--) {
-        let cells = rows[i].getElementsByTagName("td");
-        if (cells.length > 1 && cells[0].textContent.trim() === market_name) {
-            table.deleteRow(i);
-            let lastrow = i
-        }
-    }
-    
-    table.deleteRow(lastrow+1);
-}
-
 function addMarketToTable(market_id) {
 
     console.log(`Add ${market_id} to selected_markets`)
@@ -81,9 +19,23 @@ function addMarketToTable(market_id) {
             el_updatetime.innerHTML = `Selected Markets <span class="small-text">updated_at: ${data.publish_time}</span>`
             selected_markets.forEach(market => {
                 
-                console.log(`Pull Prices for ${market.market_name}_${market.selection_name}`)
+                const side2 = market.market_name.toUpperCase().includes("OVERS LINE")
+                                ? (market.side === "LAY" ? "OVER" : market.side === "BACK" ? "UNDER" : market.side)
+                                : market.side;
 
-                let rowColor = market.side === "BACK" ? "table-info" : "table-warning";
+                console.log(`Pull Prices for ${market.market_name}_${market.selection_name}, ${side2}`)
+
+
+                if (side2 === 'LAY') {
+                    rowColor = 'table-warning';
+                  } else if (side2 === 'UNDER') {
+                    rowColor = 'table-light';
+                  } else if (side2 === 'BACK') {
+                    rowColor = 'table-info';
+                  } else {
+                    rowColor = 'table-secondary';
+                  }
+                
                 let exp_id = market.side === "BACK" ? `${market.market_id}_${market.selection_id}_expW` : `${market.market_id}_${market.selection_id}_expL`;
                 let exp_text_col = parseFloat(`${market.exposure}`) >= 0 ? 'text-success' : 'text-danger';
 
@@ -97,16 +49,26 @@ function addMarketToTable(market_id) {
 
 
                 let id = `${market.market_id}-${market.selection_id}-${market.side}`
-                let hedge_input = market.side === "BACK" ? `<select>
-                                                                <option value=""></option>
-                                                                <option value="X">X</option>
-                                                                <option value="Y">Y</option>
-                                                            </select>` : '';
+                let hedge_input = ["BACK", "OVER", "UNDER"].includes(side2)
+                                    ? `<select>
+                                        <option value=""></option>
+                                        <option value="X">X</option>
+                                        <option value="Y">Y</option>
+                                    </select>`
+                                    : '';
+
+                const price1 = market.priceList?.[0] || "";
+                const price2 = market.priceList?.[1] || "";
+                const price3 = market.priceList?.[2] || "";
+
+                const size1 = market.sizeList?.[0] || "";
+                const size2 = market.sizeList?.[1] || "";
+                const size3 = market.sizeList?.[2] || "";
 
                 tableBody.append(`
                     <tr id=${id} class="${rowColor}">
-                        <td class="fs-6">${market.market_name}</td>
-                        <td class="fs-6">${market.selection_name}</td>
+                        <td class="fs-6"><small>${market.market_name}</small></td>
+                        <td class="fs-6"><small>${market.selection_name}</small></td>
                         <td class="text-center ${exp_text_col}" id="${exp_id}">
                             ${exp}
                         </td>
@@ -120,42 +82,26 @@ function addMarketToTable(market_id) {
                         <td>
                             ${hedge_input}
                         </td>
-                        <td class="fs-6">${market.side}</td>
-                        <td id="size-${id}" class="fs-6"><input type="number" class="form-control form-control-sm  w-100" min="0"></td>
-                        <td id="sizeMin-${id}" class="fs-6"><input type="number" class="form-control form-control-sm  w-100" min="0" value="0"></td>
-                        <td id="min-price-${id}" class="min-price fs-6"><input type="number" class="form-control form-control-sm  w-100" min="0" value="0"></td>
-                        <td>
-                            <canvas class="chart-container" id="chart-${id}" height="50"></canvas>
+                        <td class="fs-6">${side2}</td>
+                        <td id="size-${id}"><input type="number" class="form-control input-4char" min="0 value="0"/></td>
+                        <td id="price-${id}"><input type="number" class="form-control input-4char" min="0" value="${price1}"/></td>
+                        <td id="level1-${id}">
+                             <button class="btn btn-primary">${price1}<br>
+                            <small>(£${size1})</small></button>
+                        </td>
+                        <td id="level2-${id}">
+                            <button class="btn btn-secondary">${price2}<br>
+                            <small>(£${size2})</small></button>
+                        </td>
+                        <td id="level3-${id}">
+                            <button class="btn btn-secondary">${price3}<br>
+                            <small>(£${size3})</small></button>
                         </td>
                     </tr>
                 `);
-
-
-                var ctx = document.getElementById(`chart-${id}`).getContext("2d");
-                new Chart(ctx, {
-                    type: "bar",
-                    data: {
-                        labels: market.priceList,
-                        datasets: [{
-                            label: "Size",
-                            data: market.sizeList,
-                            backgroundColor: "rgba(54, 162, 235, 0.6)"
-                        }]
-                    },
-                    options: {
-                        responsive: false,
-                        scales: { y: { display: false }, x: { display: true, ticks: {font: {size: 12}} } },
-                        plugins: {
-                            legend: {
-                                display: false
-                            } 
-                        },
-                        maintainAspectRatio: false,
-                    }
-                })
             });
             tableBody.append(`
-                <tr>
+                <tr id="${selected_markets[0].market_id}-break">
                     <td colspan="8" style="height: 20px;"></td> <!-- Break Row -->
                 </tr>
             `);
@@ -163,12 +109,66 @@ function addMarketToTable(market_id) {
     });
 }
 
+function deleteRowsByName(market_id, market_name) {
+
+    console.log(`Remove ${market_name} ${market_id} from selection list`)
+
+    updateSelection(market_id, 'remove')
+    
+    let table = document.getElementById("market_prices_table");
+    if (!table) {
+        console.error("Table not found!");
+        return;
+    }
+
+    const rows = document.querySelectorAll(`tr[id*="${market_id}"]`);
+    rows.forEach(row => row.remove());
+}
+
+function handleMarketButtonClick(event) {
+
+    const button = $(event.currentTarget);
+    const market_id = button.data("market");
+    const market_name = button.data("market_name");
+
+    if (market_id in selectedMarkets) {
+        delete selectedMarkets[market_id];
+        button.removeClass("selected");
+        deleteRowsByName(market_id, market_name);
+    } else {
+        selectedMarkets[market_id] = market_name;
+        button.addClass("selected");
+        addMarketToTable(market_id);
+    }
+
+    console.log(`Selected Markets`, selectedMarkets);
+
+    const count = Object.keys(selectedMarkets).length;
+    document.getElementById('selected_markets_tab').innerHTML = `Select Markets (${count})`;
+
+};
+
+
+function updateSelection(market_id, add_remove) {
+
+    console.log(`Update selected_markets Shelve`)
+
+    fetch('/update_selection', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ market_id: market_id, add_remove: add_remove })
+    });
+
+}
+
 
 // document.getElementById('refreshBtn').addEventListener('click', function () {
 function refreshMarkets() {
     const currentUrl = window.location.href;
 
-    fetch('/refresh_markets', {
+    fetch('/get_markets', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -189,7 +189,7 @@ function refreshMarkets() {
                 button.className = cl;
                 button.setAttribute('data-market', market.market_id);
                 button.setAttribute('data-market_name', market.market_name);
-                button.textContent = `${market.market_name} / (${market.total_matched})`;
+                button.textContent = `${market.market_name} / (£${market.total_matched})`;
                 listGroup.appendChild(button);
             });
         })

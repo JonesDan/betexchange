@@ -4,45 +4,39 @@ const eventSource = new EventSource('/stream?channel=prices');
 eventSource.addEventListener('update', function(event) {
     // Parse the incoming data
     const data = JSON.parse(event.data);
-    chartId = `chart-${data.market_id}-${data.selection_id}-${data.side}`
-    const chartInstance = Chart.getChart(chartId); // Get the chart instance by ID
 
-    if (chartInstance) {
-        console.log(`Update data for chart ${chartId}`);
+    const cellId = `level${data.level}-${data.market_id}-${data.selection_id}-${data.side}`
+    const cell = document.getElementById(cellId);
+    if (cell) {
+        console.log(`Update data for cell ${cellId}`);
         const el_updatetime = document.getElementById("update_time");
 
-        const Labels = chartInstance.data.labels
-        const Dataset = chartInstance.data.datasets[0].data;
+        const currentValue = parseFloat(cell.childNodes[1].nodeValue.trim());
 
-        const level = data.level
-        Labels[level] = data.price;
-        Dataset[level] = data.size;
+        const newValue = parseFloat(data.price)
+        
+        if (newValue < currentValue) {
+            cell.classList.add('bg-success', 'text-white');
+            cell.classList.remove('bg-danger');
+        } else if (newValue > currentValue) {
+            cell.classList.add('bg-danger', 'text-white');
+            cell.classList.remove('bg-success');
+        } else {
+            // no change, clear any color classes
+            cell.classList.remove('bg-success', 'bg-danger', 'text-white');
+        }
 
-        chartInstance.destroy()
-        var ctx = document.getElementById(chartId).getContext("2d");
+        cell.innerHTML = `<button class="btn btn-secondary">${newValue}<br>
+                            <small>(£${data.size})</small></button>`;
 
-        new Chart(ctx, {
-            type: "bar",
-            data: {
-                labels: Labels,
-                datasets: [{
-                    label: "Size",
-                    data: Dataset,
-                    backgroundColor: "rgba(54, 162, 235, 0.6)"
-                }]
-            },
-            options: {
-                responsive: false,
-                scales: { y: { display: false }, x: { display: true, ticks: {font: {size: 12}} } },
-                plugins: { legend: { display: false } },
-                maintainAspectRatio: false,
-            }
-        })
+        setTimeout(() => {
+            cell.classList.remove('bg-success', 'bg-danger', 'text-white');
+        }, 3000);
 
         el_updatetime.innerHTML = `Selected Markets <span class="small-text">updated_at: ${data.publish_time}</span>`
 
       } else {
-        console.log("Chart not found!");
+        console.log("Cell not found!");
       }
 });
 
@@ -84,92 +78,65 @@ async function fetchAndUpdateOrders() {
 
 // Function to update or insert a row in the table
 function updateTable(data) {
-    const table = document.getElementById("orders_table");
+    const table = document.getElementById("order_summary");
     let row = document.getElementById(`row-${data.bet_id}`);
+
+    console.log(`Order data: ${data.market_name}`);
+
+    const side2 = data.market_name.toUpperCase().includes("OVERS LINE")
+    ? (data.side === "LAY" ? "OVER" : data.side === "BACK" ? "UNDER" : data.side)
+    : data.side;
+
+    let innerHTML_txt = `
+                    <td fs-6><small>${data.bet_id}</small></td>
+                    <td fs-6><small>${data.placed_date}</small></td>
+                    <td fs-6><small>${data.matched_date}</small></td>
+                    <td fs-6><small>${data.cancelled_date}</small></td>
+                    <td fs-6><small>${data.market_name}</small></td>
+                    <td fs-6><small>${data.selection_name}</small></td>
+                    <td fs-6><small>${side2}</small></td>
+                    <td fs-6><small>${data.status}</small></td>
+                    <td fs-6><small>${data.price}</small></td>
+                    <td fs-6><small>${data.size}</small></td>
+                    <td fs-6><small>${data.average_price_matched}</small></td>
+                    <td fs-6><small>${data.size_matched}</small></td>
+                    <td fs-6><small>${data.size_remaining}</small></td>
+                    <td fs-6><small>${data.size_lapsed}</small></td>
+                    <td fs-6><small>${data.size_cancelled}</small></td>
+                    <td fs-6><small>${data.size_voided}</small></td>
+                        `;
 
     if (row) {
         // Update existing row
         console.log(`Update order ${data.bet_id}`);
 
-        let [placed_date, placed_time] = data.placed_date ? data.placed_date.split('T') : ['', ''];
-        let [matched_date, matched_time] = data.matched_date ? data.matched_date.split('T') : ['', ''];
-        let [canc_date, canc_time] = data.cancelled_date ? data.cancelled_date.split('T') : ['', ''];
-
-        row.innerHTML = `
-                    <td class="fs-6">${data.bet_id}</td>
-                    <td class="fs-6">${data.market_name}</td>
-                    <td class="fs-6">${data.selection_name}</td>
-                    <td class="fs-6">
-                        <div class="fw-bold small">${placed_date}</div>
-                        <div class="text-muted text-small">${placed_time}</div>
-                    </td>
-                    <td class="fs-6">
-                        <div class="fw-bold small">${matched_date}</div>
-                        <div class="text-muted text-small">${matched_time}</div>
-                    </td>
-                    <td class="fs-6">
-                        <div class="fw-bold small">${canc_date}</div>
-                        <div class="text-muted text-small">${canc_time}</div>
-                    </td>
-                    <td class="fs-6">${data.side}</td>
-                    <td class="fs-6">${data.status}</td>
-                    <td class="fs-6">${data.price}</td>
-                    <td class="fs-6">${data.size}</td>
-                    <td class="fs-6">${data.average_price_matched}</td>
-                    <td class="fs-6">${data.size_matched}</td>
-                    <td class="fs-6">${data.size_remaining}</td>
-                    <td class="fs-6">${data.size_lapsed}</td>
-                    <td class="fs-6">${data.size_cancelled}</td>
-                    <td class="fs-6">${data.size_voided}</td>
-                    `;
+        row.innerHTML = innerHTML_txt;
     } else {
         
         // Create new row if it doesn't exist
         // Create new row if it doesn't exist
         row = table.insertRow();
         row.id = `row-${data.bet_id}`;
-        let rowColor = data.side === "BACK" ? "table-info" : "table-warning";
+
+        if (side2 === 'LAY') {
+        rowColor = 'table-warning';
+        } else if (side2 === 'UNDER') {
+        rowColor = 'table-light';
+        } else if (side2 === 'BACK') {
+        rowColor = 'table-info';
+        } else {
+        rowColor = 'table-secondary';
+        }
+
         row.classList.add(`${rowColor}`);
 
         console.log(`Add new order ${data.bet_id}`);
 
-        let [placed_date, placed_time] = data.placed_date ? data.placed_date.split('T') : ['', ''];
-        let [matched_date, matched_time] = data.matched_date ? data.matched_date.split('T') : ['', ''];
-        let [canc_date, canc_time] = data.cancelled_date ? data.cancelled_date.split('T') : ['', ''];
-
-
-        row.innerHTML = `
-                    <td class="fs-6">${data.bet_id}</td>
-                    <td class="fs-6">${data.market_name}</td>
-                    <td class="fs-6">${data.selection_name}</td>
-                    <td class="fs-6">
-                        <div class="fw-bold small">${placed_date}</div>
-                        <div class="text-muted text-small">${placed_time}</div>
-                    </td>
-                    <td class="fs-6">
-                        <div class="fw-bold small">${matched_date}</div>
-                        <div class="text-muted text-small">${matched_time}</div>
-                    </td>
-                    <td class="fs-6">
-                        <div class="fw-bold small">${canc_date}</div>
-                        <div class="text-muted text-small">${canc_time}</div>
-                    </td>
-                    <td class="fs-6">${data.matched_date}</td>
-                    <td class="fs-6">${data.cancelled_date}</td>
-                    <td class="fs-6">${data.side}</td>
-                    <td class="fs-6">${data.status}</td>
-                    <td class="fs-6">${data.price}</td>
-                    <td class="fs-6">${data.size}</td>
-                    <td class="fs-6">${data.average_price_matched}</td>
-                    <td class="fs-6">${data.size_matched}</td>
-                    <td class="fs-6">${data.size_remaining}</td>
-                    <td class="fs-6">${data.size_lapsed}</td>
-                    <td class="fs-6">${data.size_cancelled}</td>
-                    <td class="fs-6">${data.size_voided}</td>
-                        `;
+        row.innerHTML = innerHTML_txt;
     }
     const rowCount = document.querySelectorAll('#orders_table tbody tr').length;
     const tab = document.getElementById('order_summary_tab');
+    console.log(`Update Order Logs counter ${rowCount}`)
     tab.textContent = `Order Logs (${rowCount})`;
 }
 

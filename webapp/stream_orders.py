@@ -19,9 +19,9 @@ def upload_orders(data, market_id, logger):
 
         price = data['price_size']['Price']
         size = data['price_size']['Size']
-        placed_date = data['placed_date'].strftime('%Y-%m-%dT%HH-%MM-%SS') if data['placed_date'] else None
-        matched_date = data['matched_date'].strftime('%Y-%m-%dT%HH-%MM-%SS') if data['matched_date'] else None
-        cancelled_date = data['cancelled_date'].strftime('%Y-%m-%dT%HH-%MM-%SS') if data['cancelled_date'] else None
+        placed_date = data['placed_date'].strftime('%d/%m/%yT%H:%M:%S') if data['placed_date'] else None
+        matched_date = data['matched_date'].strftime('%d/%m/%yT%H:%M:%S') if data['matched_date'] else None
+        cancelled_date = data['cancelled_date'].strftime('%d/%m/%yT%H:%M:%S') if data['cancelled_date'] else None
         data_adj = {'market_id': market_id, 'price': price, 'size': size, 'placed_date': placed_date, 'matched_date': matched_date, 'cancelled_date': cancelled_date}
         summary = data | data_adj
 

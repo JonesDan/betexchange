@@ -62,9 +62,10 @@
     
     function getSelectedRows(shortcut) {
         let selectedRows = {};
-        document.querySelectorAll("tbody tr").forEach(row => {
+        document.querySelectorAll("#market_prices_table tbody tr").forEach(row => {
             let rowId = row.id;
-            if (rowId) {
+            if (rowId && !rowId.includes("-break")) {
+                console.log(`check row ${rowId}`)
                 let selectValue = row.cells[3].querySelector("select").value;
                 let selectValue_hedge = row.cells[4].querySelector("select")?.value || null;
                 let sizeValue = row.cells[6].querySelector("input").value;

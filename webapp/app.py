@@ -126,8 +126,8 @@ def eventDetail(event_name, event_id):
         flash(f"Error pulling EventDetail: {e}", "danger")
         return redirect(url_for("eventList"))
 
-@app.route('/refresh_markets', methods=['POST'])
-def refresh_markets():
+@app.route('/get_markets', methods=['POST'])
+def get_markets():
     try:
         data = request.get_json()
         url = data.get('url')
@@ -138,7 +138,7 @@ def refresh_markets():
         trading = get_betfair_client_from_flask_session(session)
 
         list_market_catalogue(trading, event_id)
-        market_ids_list = query_sqlite("SELECT DISTINCT event, market_id, market_name, total_matched AS total_matched FROM market_catalogue")
+        market_ids_list = query_sqlite("SELECT DISTINCT event, market_id, market_name, total_matched FROM market_catalogue order by total_matched desc")
 
         for market in market_ids_list:
             market['total_matched'] = millify(market['total_matched'], precision=2)
@@ -202,7 +202,7 @@ def get_prices():
 
         for price in prices:
             price['priceList'] = price['priceList'].split(',')
-            price['sizeList'] = price['sizeList'].split(',')
+            price['sizeList'] = [millify(size) for size in price['sizeList'].split(',')]
     
         return jsonify({'selected_markets': prices, 'publish_time': prices[0]['publish_time']})
     
@@ -224,6 +224,8 @@ def get_orders():
                                         m.market_name, 
                                         m.selection_name,
                                         o.placed_date,
+                                        o.matched_date,
+                                        o.cancelled_date, 
                                         o.side,
                                         o.status,
                                         printf('%.2f', o.price) AS price,
@@ -241,7 +243,7 @@ def get_orders():
             attempt+=1
             time.sleep(1)
         
-        logger.info(f'getOrders: example {existing_orders[0]}')
+        logger.info(f'getOrders: example {existing_orders[0]}' if len(existing_orders) > 0 else 'getOrders: No Orders found')
 
         return jsonify(existing_orders)
 

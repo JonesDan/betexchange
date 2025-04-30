@@ -46,7 +46,8 @@ def place_order(trading, selection_id, b_l, market_id, size, price, sizeMin, res
         instructions = []
         order_response = []
 
-        limit_order = filters.limit_order(size=size, price=price, persistence_type="LAPSE", time_in_force="FILL_OR_KILL", min_fill_size=sizeMin)
+        # limit_order = filters.limit_order(size=size, price=price, persistence_type="LAPSE", time_in_force="FILL_OR_KILL", min_fill_size=sizeMin)
+        limit_order = filters.limit_order(size=size, price=price, persistence_type="LAPSE")
         instruction = filters.place_instruction(
             order_type="LIMIT",
             selection_id=selection_id,
