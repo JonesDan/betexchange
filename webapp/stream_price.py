@@ -18,7 +18,7 @@ from cryptography.fernet import Fernet
 import pickle
 import redis
 import json
-import millify
+from millify import millify
 
 
 class Streaming(threading.Thread):

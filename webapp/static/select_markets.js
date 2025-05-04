@@ -1,5 +1,58 @@
 let selectedMarkets = {}
 
+function insertHorizontalSubTableRow(market_id, selection_id, dataList) {
+    const mainTable = document.getElementById('selected-markets');
+
+    // Create new row for the subtable
+    const newRow = document.createElement('tr');
+    newRow.id = `${market_id}-${selection_id}-overs_exposure`
+    const newCell = document.createElement('td');
+    newCell.colSpan = 11;
+
+    // Create the subtable
+    const subTable = document.createElement('table');
+    subTable.className = 'table table-bordered table-sm text-center';
+
+    if (dataList.length > 0) {
+        // Get all keys from the first dict
+        // const keys = Object.keys(dataList[0]);
+        const keys = ['runs', 'profit'];
+
+        // Create a row for each key (runs, profit, etc.)
+        keys.forEach(key => {
+            const row = document.createElement('tr');
+
+            // Header cell for the row label (e.g., "runs")
+            const th = document.createElement('th');
+            th.textContent = key;
+            row.appendChild(th);
+
+            // Data cells
+            dataList.forEach(item => {
+                const td = document.createElement('td');
+                td.textContent = item[key];
+                td.classList.add('fs-6');
+
+                // Color-code profit cells
+                if (key.toLowerCase() === 'profit') {
+                    td.classList.add('text-white');
+                    if (item[key] > 0) td.classList.add('bg-success');
+                    else if (item[key] < 0) td.classList.add('bg-danger');
+                    else td.classList.add('bg-secondary');
+                }
+
+                row.appendChild(td);
+            });
+
+            subTable.appendChild(row);
+        });
+    }
+
+    newCell.appendChild(subTable);
+    newRow.appendChild(newCell);
+    mainTable.appendChild(newRow);
+}
+
 function addMarketToTable(market_id) {
 
     console.log(`Add ${market_id} to selected_markets`)
@@ -17,6 +70,11 @@ function addMarketToTable(market_id) {
             const el_updatetime = document.getElementById("update_time");
             const selected_markets = data.selected_markets
             el_updatetime.innerHTML = `Selected Markets <span class="small-text">updated_at: ${data.publish_time}</span>`
+            tableBody.append(`
+                <tr id="${selected_markets[0].market_id}-break">
+                    <td colspan="10" style="height: 20px;">${selected_markets[0].market_name}</td> <!-- Break Row -->
+                </tr>
+            `);
             selected_markets.forEach(market => {
                 
                 const side2 = market.market_name.toUpperCase().includes("OVERS LINE")
@@ -40,16 +98,16 @@ function addMarketToTable(market_id) {
                 let exp_text_col = parseFloat(`${market.exposure}`) >= 0 ? 'text-success' : 'text-danger';
 
                 // let exp  = market.side === "BACK"  ? `£${market.exposure}` : ``;
-                let exp = market.side === "BACK"
+                let exp = side2 === "BACK"
                                             ? (market.exposure < 0
                                                 ? `-£${Math.abs(market.exposure).toFixed(2)}`
                                                 : `£${market.exposure}`
-                                                )
+                                            )
                                             : '';
 
 
                 let id = `${market.market_id}-${market.selection_id}-${market.side}`
-                let hedge_input = ["BACK", "OVER", "UNDER"].includes(side2)
+                let hedge_input = side2 === "BACK"
                                     ? `<select>
                                         <option value=""></option>
                                         <option value="X">X</option>
@@ -61,13 +119,12 @@ function addMarketToTable(market_id) {
                 const price2 = market.priceList?.[1] || "";
                 const price3 = market.priceList?.[2] || "";
 
-                const size1 = market.sizeList?.[0] || "";
-                const size2 = market.sizeList?.[1] || "";
-                const size3 = market.sizeList?.[2] || "";
+                const size1 = market.sizeList?.[0] || "0";
+                const size2 = market.sizeList?.[1] || "0";
+                const size3 = market.sizeList?.[2] || "0";
 
                 tableBody.append(`
                     <tr id=${id} class="${rowColor}">
-                        <td class="fs-6"><small>${market.market_name}</small></td>
                         <td class="fs-6"><small>${market.selection_name}</small></td>
                         <td class="text-center ${exp_text_col}" id="${exp_id}">
                             ${exp}
@@ -83,28 +140,24 @@ function addMarketToTable(market_id) {
                             ${hedge_input}
                         </td>
                         <td class="fs-6">${side2}</td>
-                        <td id="size-${id}"><input type="number" class="form-control input-4char" min="0 value="0"/></td>
-                        <td id="price-${id}"><input type="number" class="form-control input-4char" min="0" value="${price1}"/></td>
+                        <td id="size-${id}" class="number-input-column"><input type="number" min="0 value="0"/></td>
+                        <td id="price-${id}" class="number-input-column"><input type="number" min="0" value="${price1}"/></td>
                         <td id="level1-${id}">
                              <button class="btn btn-primary">${price1}<br>
-                            <small>(£${size1})</small></button>
+                             <small class="small-text">(£${size1})</small></button>
                         </td>
                         <td id="level2-${id}">
                             <button class="btn btn-secondary">${price2}<br>
-                            <small>(£${size2})</small></button>
+                            <small class="small-text">(£${size2})</small></button>
                         </td>
                         <td id="level3-${id}">
                             <button class="btn btn-secondary">${price3}<br>
-                            <small>(£${size3})</small></button>
+                            <small class="small-text">(£${size3})</small></button>
                         </td>
                     </tr>
                 `);
             });
-            tableBody.append(`
-                <tr id="${selected_markets[0].market_id}-break">
-                    <td colspan="8" style="height: 20px;"></td> <!-- Break Row -->
-                </tr>
-            `);
+            if (data.exposure_overs && data.exposure_overs.length > 0) insertHorizontalSubTableRow(data.selected_markets[0].market_id, data.selected_markets[0].selection_id, data.exposure_overs);
         }
     });
 }
@@ -208,6 +261,35 @@ document.addEventListener('DOMContentLoaded', function () {
         refreshMarkets();
     });
 });
+
+function cancelOrder(betId) {
+    const button = event.target;
+    button.disabled = true;
+    button.textContent = 'CANCELING...';
+
+    fetch('/cancel_orders', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ bet_id: betId })
+    })
+    .then(response => {
+        if (response.ok) {
+            button.textContent = 'CANCELLED';  // Optionally update or hide
+            button.classList.remove('btn-danger');
+            button.classList.add('btn-secondary');
+        } else {
+            button.textContent = 'FAILED';
+            button.disabled = false;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        button.textContent = 'ERROR';
+        button.disabled = false;
+    });
+}
 
 // Start process on page load
 window.addEventListener('load', () => {

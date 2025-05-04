@@ -5,7 +5,7 @@ from threading import Thread
 import redis
 import os
 import betfairlightweight
-from utils import init_logger, place_order, list_market_catalogue, list_events, get_betfair_client_from_flask_session
+from utils import init_logger, place_order, list_market_catalogue, list_events, get_betfair_client_from_flask_session, get_exposure_overs
 from utils_db import query_sqlite, init_db, delete_sample_files, init_selected_markets
 import queue
 from cryptography.fernet import Fernet
@@ -14,6 +14,7 @@ import time
 import json
 from datetime import datetime
 from millify import millify
+import urllib.parse
 
 # Logging
 logger = init_logger('app')
@@ -136,9 +137,9 @@ def get_markets():
         logger.info(f'refreshMarkets: Pull Markets. Event_id {event_id}')
 
         trading = get_betfair_client_from_flask_session(session)
-
-        list_market_catalogue(trading, event_id)
-        market_ids_list = query_sqlite("SELECT DISTINCT event, market_id, market_name, total_matched FROM market_catalogue order by total_matched desc")
+        list_market_catalogue(trading, [event_id])
+        
+        market_ids_list = query_sqlite(f"SELECT DISTINCT event, market_id, market_name, total_matched FROM market_catalogue order by total_matched desc")
 
         for market in market_ids_list:
             market['total_matched'] = millify(market['total_matched'], precision=2)
@@ -203,8 +204,10 @@ def get_prices():
         for price in prices:
             price['priceList'] = price['priceList'].split(',')
             price['sizeList'] = [millify(size) for size in price['sizeList'].split(',')]
-    
-        return jsonify({'selected_markets': prices, 'publish_time': prices[0]['publish_time']})
+
+        exposure_overs = get_exposure_overs(market_id)
+
+        return jsonify({'selected_markets': prices,'exposure_overs': exposure_overs, 'publish_time': prices[0]['publish_time']})
     
     except Exception as e:
         logger.error(f'getPrices: error {e}', exc_info=True)
@@ -250,6 +253,25 @@ def get_orders():
     except Exception as e:
         logger.error(f'getOrders: error {e}', exc_info=True)
         pass
+
+
+@app.route('/cancel_orders', methods=["POST"])
+def cancel_orders():
+    trading = get_betfair_client_from_flask_session(session)
+    
+    bet_id = request.get_json('bet_id')
+    
+    instruction = filters.cancel_instruction(bet_id=bet_id, size_reduction=2.00)
+    cancel_order = trading.betting.cancel_orders(
+        market_id=market_id, instructions=[instruction]
+    )
+
+    print(cancel_order.status)
+    for cancel in cancel_order.cancel_instruction_reports:
+        print(
+            "Status: %s, Size Cancelled: %s, Cancelled Date: %s"
+            % (cancel.status, cancel.size_cancelled, cancel.cancelled_date)
+        )
 
 
 # Process orders

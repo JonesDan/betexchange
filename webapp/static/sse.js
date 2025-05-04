@@ -88,22 +88,30 @@ function updateTable(data) {
     : data.side;
 
     let innerHTML_txt = `
-                    <td fs-6><small>${data.bet_id}</small></td>
-                    <td fs-6><small>${data.placed_date}</small></td>
-                    <td fs-6><small>${data.matched_date}</small></td>
-                    <td fs-6><small>${data.cancelled_date}</small></td>
-                    <td fs-6><small>${data.market_name}</small></td>
-                    <td fs-6><small>${data.selection_name}</small></td>
-                    <td fs-6><small>${side2}</small></td>
-                    <td fs-6><small>${data.status}</small></td>
-                    <td fs-6><small>${data.price}</small></td>
-                    <td fs-6><small>${data.size}</small></td>
-                    <td fs-6><small>${data.average_price_matched}</small></td>
-                    <td fs-6><small>${data.size_matched}</small></td>
-                    <td fs-6><small>${data.size_remaining}</small></td>
-                    <td fs-6><small>${data.size_lapsed}</small></td>
-                    <td fs-6><small>${data.size_cancelled}</small></td>
-                    <td fs-6><small>${data.size_voided}</small></td>
+                    <td class="fs-6"><small class="small-text">${data.bet_id}</small></td>
+                    <td class="fs-6"><small class="small-text">${data.placed_date}</small></td>
+                    <td class="fs-6"><small class="small-text">${data.matched_date}</small></td>
+                    <td class="fs-6">
+                        <small class="small-text">
+                            ${
+                                data.status === 'EXECUTABLE'
+                                ? `<button class="btn btn-sm btn-danger" onclick="cancelOrder('${data.bet_id}')">Cancel</button>`
+                                : data.cancelled_date || ''
+                            }
+                        </small>
+                    </td>
+                    <td class="fs-6"><small class="small-text">${data.market_name}</small></td>
+                    <td class="fs-6"><small class="small-text">${data.selection_name}</small></td>
+                    <td class="fs-6"><small class="small-text">${side2}</small></td>
+                    <td class="fs-6"><small class="small-text">${data.status}</small></td>
+                    <td class="fs-6"><small class="small-text">${data.price}</small></td>
+                    <td class="fs-6"><small class="small-text">${data.size}</small></td>
+                    <td class="fs-6"><small class="small-text">${data.average_price_matched}</small></td>
+                    <td class="fs-6"><small class="small-text">${data.size_matched}</small></td>
+                    <td class="fs-6"><small class="small-text">${data.size_remaining}</small></td>
+                    <td class="fs-6"><small class="small-text">${data.size_lapsed}</small></td>
+                    <td class="fs-6"><small class="small-text">${data.size_cancelled}</small></td>
+                    <td class="fs-6"><small class="small-text">${data.size_voided}</small></td>
                         `;
 
     if (row) {

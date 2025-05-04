@@ -4,7 +4,7 @@ import betfairlightweight
 import logging
 from datetime import datetime, timedelta
 from betfairlightweight import filters
-from utils_db import upsert_sqlite, create_sample_files
+from utils_db import upsert_sqlite, create_sample_files, query_sqlite
 
 def init_logger(filename):
     # Logging
@@ -70,11 +70,11 @@ def place_order(trading, selection_id, b_l, market_id, size, price, sizeMin, res
     result_queue.put(result)
 
 
-def list_market_catalogue(trading, event_id):
+def list_market_catalogue(trading, event_id_list):
 
     # Fetch the market catalogue for the event
     market_filter = betfairlightweight.filters.market_filter(
-        event_ids=[event_id]
+        event_ids=event_id_list
     )
 
     market_catalogue = trading.betting.list_market_catalogue(
@@ -100,7 +100,7 @@ def list_market_catalogue(trading, event_id):
             market_catalogue_list.append(data)
             upsert_sqlite('market_catalogue', data)
 
-    create_sample_files('list_market_catalogue', market_catalogue_list)
+    create_sample_files('list_market_catalogue', market_catalogue_list[0])
 
     return(market_catalogue_list)
 
@@ -128,10 +128,54 @@ def list_events(trading):
     # Print the sorted events
     for event in sorted_events:
         events_list.append({'event_name':event.event.name, 'date': event.event.open_date, 'event_id': event.event.id})
+
     
-    create_sample_files('list_events', events_list)
+    create_sample_files('list_events', events_list[0])
 
     return events_list
+
+def get_exposure_overs(market_id):
+    selection_exp_overs = query_sqlite(f"""
+                        WITH numbered AS (
+                                    SELECT
+                                        runs,
+                                        profit,
+                                        runs - ROW_NUMBER() OVER (PARTITION BY profit ORDER BY runs) AS grp
+                                    FROM selection_exposure_overs
+                                       WHERE market_id = {market_id}
+                                    ),
+                                    grouped AS (
+                                    SELECT
+                                        MIN(runs) AS start_run,
+                                        MAX(runs) AS end_run,
+                                        profit
+                                    FROM numbered
+                                    GROUP BY profit, grp
+                                    ),
+                                    max_run AS (
+                                    SELECT MAX(runs) AS max_run FROM selection_exposure_overs
+                                    ),
+                                    formatted AS (
+                                    SELECT
+                                        CASE 
+                                        WHEN start_run = end_run AND end_run = (SELECT max_run FROM max_run)
+                                            THEN CAST(end_run AS TEXT) || '+'
+                                        WHEN start_run = end_run
+                                            THEN CAST(start_run AS TEXT)
+                                        WHEN end_run = (SELECT max_run FROM max_run)
+                                            THEN CAST(start_run AS TEXT) || '-' || CAST(end_run AS TEXT) || '+'
+                                        ELSE
+                                            CAST(start_run AS TEXT) || '-' || CAST(end_run AS TEXT)
+                                        END AS runs,
+                                        profit,
+                                        start_run
+                                    FROM grouped
+                                    )
+                                    SELECT * FROM formatted
+                                    ORDER BY start_run;
+                                """)
+    
+    return selection_exp_overs
 
 def get_betfair_client_from_flask_session(session):
     username = session.get('username', 'No name found')

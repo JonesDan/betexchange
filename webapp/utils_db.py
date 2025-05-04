@@ -40,6 +40,13 @@ sqlite_tables = {
         {'name': 'selection_id' , 'type': 'INTEGER'},
         {'name': 'exposure' , 'type': 'REAL'},
     ],
+    'selection_exposure_overs' : [
+        {'name': 'key' , 'type': 'PRIMARY KEY'},
+        {'name': 'market_id' , 'type': 'TEXT'},
+        {'name': 'selection_id' , 'type': 'INTEGER'},
+        {'name': 'runs' , 'type': 'INTEGER'},
+        {'name': 'profit' , 'type': 'REAL'},
+    ],
     'price' : [
         {'name': 'key' , 'type': 'PRIMARY KEY'},
         {'name': 'market_id' , 'type': 'TEXT'},
@@ -57,7 +64,7 @@ sqlite_tables = {
 
 def calc_order_exposure(market_id='ALL'):
 
-    market_filter_str = "" if market_id == 'ALL' else f"WHERE m.market_id = '{market_id}'"
+    market_filter_str = "" if market_id == 'ALL' else f"AND m.market_id = '{market_id}'"
     selection_exposure_data = query_sqlite(f"""
                 WITH cte_orders AS (
                     SELECT
@@ -72,7 +79,7 @@ def calc_order_exposure(market_id='ALL'):
                             SUM(CASE WHEN side = 'LAY' THEN o.size ELSE 0 END) AS lay_profit
                         FROM market_catalogue m
                         LEFT JOIN orders o ON o.market_id = m.market_id AND o.selection_id = m.selection_id
-                        {market_filter_str}
+                        WHERE market_name NOT LIKE '%OVERS LINE%' {market_filter_str}
                         GROUP BY key, m.market_id, m.selection_id
                     ),
                     cte_calcs AS (
@@ -97,6 +104,43 @@ def calc_order_exposure(market_id='ALL'):
     
     for results in selection_exposure_data:
         upsert_sqlite('selection_exposure', results)
+    
+    return selection_exposure_data
+
+
+def calc_order_exposure_overs(market_id='ALL'):
+
+    market_filter_str = "" if market_id == 'ALL' else f"WHERE market_id = '{market_id}'"
+    market_filter_str2 = "" if market_id == 'ALL' else f"AND m.market_id = '{market_id}'"
+    
+    selection_exposure_data = query_sqlite(f"""
+                    WITH RECURSIVE runs_total(n) AS (
+                        SELECT 0
+                        UNION ALL
+                        SELECT n + 1 FROM runs_total WHERE n + 1 <= 
+                            (SELECT MAX(price) + 1 FROM orders {market_filter_str})
+                    )
+                    SELECT
+                        m.market_id || '-' || m.selection_id || '-' || rt.n AS key,
+                        m.market_id,
+                        m.selection_id,
+                        rt.n AS runs,
+                        SUM(CASE WHEN (rt.n > o.average_price_matched AND o.side = 'LAY')
+                            OR (rt.n < o.average_price_matched AND o.side = 'BACK') THEN o.size
+                            ELSE -o.size END) AS profit
+                    FROM runs_total rt
+                    CROSS JOIN orders o
+                    JOIN market_catalogue m
+                        ON o.market_id = m.market_id AND o.selection_id = m.selection_id
+                    WHERE m.market_name LIKE '%OVERS LINE%'
+                        AND o.status = 'EXECUTION_COMPLETE' 
+                        {market_filter_str2}
+                    GROUP BY 1, 2, 3, 4
+                    ;
+                    """)
+    
+    for results in selection_exposure_data:
+        upsert_sqlite('selection_exposure_overs', results)
     
     return selection_exposure_data
     

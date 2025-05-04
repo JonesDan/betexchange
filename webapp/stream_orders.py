@@ -1,7 +1,7 @@
 from betfairlightweight import StreamListener
 import betfairlightweight
 from utils import init_logger, list_market_catalogue
-from utils_db import upsert_sqlite, calc_order_exposure, create_sample_files, init_db, query_sqlite
+from utils_db import upsert_sqlite, calc_order_exposure, create_sample_files, calc_order_exposure_overs, query_sqlite
 import queue
 import threading
 from flask_sse import sse
@@ -30,6 +30,7 @@ def upload_orders(data, market_id, logger):
 
         logger.info('Calc selection exposure')
         results = calc_order_exposure(summary['market_id'])
+        results = calc_order_exposure_overs(summary['market_id'])
         logger.info(results)
 
         market_catalogue_dict = query_sqlite(f"SELECT market_id, selection_id, market_name, selection_name FROM market_catalogue m WHERE key = '{summary['market_id']}-{summary['selection_id']}'")
@@ -69,7 +70,6 @@ def upload_orders(data, market_id, logger):
 
             redis_client.publish('selection_exposure', json.dumps({ "data": results,"type": "update"}))
             logger.info('Published data to selection_exposure sse')
-            logger.info('Published data to order sse', results)
     
     except Exception as e:
         logger.error(f'Error uploading orders {e}', exc_info=True)
@@ -121,29 +121,4 @@ def stream_orders(username, app_key, e, context):
             for order in market['orders']:
                 data = vars(order)
                 upload_orders(data, market_id, logger)
-
-                # price = data['price_size']['Price']
-                # size = data['price_size']['Size']
-                # placed_date = data['placed_date'].strftime('%Y-%m-%dT%HH-%MM-%SS')
-                # data_adj = {'market_id': market_id, 'price': price, 'size': size, 'placed_date': placed_date}
-                # summary = data | data_adj
-
-                # logger.info('Upsert order data')
-                # upsert_sqlite('orders', summary)
-
-                # logger.info('Calc selection exposure')
-                # results = calc_order_exposure(summary['market_id'])
-
-                # logger.info(results)
-
-                # market_catalogue_dict = query_sqlite(f"SELECT market_id, selection_id, market_name, selection_name FROM market_catalogue m WHERE key = '{data['market_id']}_{data['selection_id']}'")
-                # data['market_name'] = market_catalogue_dict[0]['market_name']
-                # data['selection_name'] = market_catalogue_dict[0]['selection_name']
-                # # sse.publish(data=data, type='update', channel='orders')
-                # redis_client.publish('orders', json.dumps({ "data": data,"type": "update"}))
-                # logger.info('Published data to order sse')
-
-                # # sse.publish(data=results, type='update', channel='selection_exposure')
-                # redis_client.publish('selection_exposure', json.dumps({ "data": results,"type": "update"}))
-                # logger.info('Published data to selection_exposure sse')
                     

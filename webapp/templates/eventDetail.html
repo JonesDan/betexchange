@@ -5,25 +5,29 @@
         background-color: #0d6efd !important; /* Bootstrap primary blue */
         color: white !important;
     }
-    .vertical-tab {
-        max-width: 200px;
-        border-right: 1px solid #ccc;
-        overflow-y: auto;
-    }
-    .market-item {
-        cursor: pointer;
-        padding: 10px;
-        border-bottom: 1px solid #eaeaea;
-    }
-    .market-item:hover {
-        background-color: #f8f9fa;
-    }
+    thead th {
+        position: sticky;
+        top: 0;
+        background-color: #f8f9fa; /* Match Bootstrap light header */
+        z-index: 2; /* Make sure it stays above table rows */
+        }
     td {
         /* border: 1px solid black; */
         text-align: center;
         vertical-align: middle;
         padding: 20px;
         font-size: 20px;
+    }
+    td button {
+        width: 75px;       /* Set a consistent width */
+        height: 60px;       /* Set a consistent height */
+        text-align: center; /* Center the text inside */
+        white-space: normal; /* Allow line breaks */
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 5px;
     }
     td.number-input-column {
         width: 100px; /* Set the width of the column */
@@ -35,18 +39,13 @@
         font-size: 14px; /* Smaller font size */
         display: block; /* Ensures it appears below */
     }
-    #temp-message {
-        position: fixed;
-        top: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        display: none;
-        z-index: 1050; /* Ensures it's above other elements */
-    }
-
     .wide-column {
         width: 120px; /* Adjust width as needed */
         min-width: 100px; /* Ensures it doesn’t shrink too much */
+    }
+    .small-column {
+        width: 60px; /* Adjust width as needed */
+        min-width: 50px; /* Ensures it doesn’t shrink too much */
     }
 
 </style>
@@ -96,24 +95,25 @@
             </div>
             <div class="tab-pane fade" id="tab2" role="tabpanel">
                 <h3 class="mb-4" id="update_time">Selected Markets <span class="small-text">updated_at: {{ update_time }}</span></h3>
-                <table class="table table-bordered" id="market_prices_table">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Market Name</th>
-                            <th>Selection</th>
-                            <th>Exposure</th>
-                            <th>Button</th>
-                            <th>Hedge Button</th>
-                            <th>Side</th>
-                            <th>Stake</th>
-                            <th>Odds / Line</th>
-                            <th colspan="3">Live Odds</th>
-                        </tr>
-                    </thead>
-                    <tbody id="selected-markets">
-                        <!-- Selected markets will be dynamically populated -->
-                    </tbody>
-                </table>
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto">
+                    <table class="table table-bordered" id="market_prices_table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Selection</th>
+                                <th class="small-column">Exposure</th>
+                                <th class="small-column">Button</th>
+                                <th class="small-column">Hedge Button</th>
+                                <th class="small-column">Side</th>
+                                <th class="wide-column">Stake</th>
+                                <th class="wide-column">Odds / Line</th>
+                                <th colspan="3">Live Odds</th>
+                            </tr>
+                        </thead>
+                        <tbody id="selected-markets">
+                            <!-- Selected markets will be dynamically populated -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
             <div class="tab-pane fade" id="tab3" role="tabpanel">
                 <div class="table-responsive-sm">
