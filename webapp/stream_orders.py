@@ -37,12 +37,18 @@ def upload_orders(data, market_id, logger):
         if len(market_catalogue_dict) > 0:
             summary['market_name'] = market_catalogue_dict[0]['market_name']
             summary['selection_name'] = market_catalogue_dict[0]['selection_name']
+            
+            if 'OVERS LINE' in summary['market_name']:
+                results = calc_order_exposure_overs(summary['market_id'])
+            else:
+                results = calc_order_exposure(summary['market_id'])
 
             sse_keys = ['bet_id', 
                         'average_price_matched', 
                         'bsp_liability', 
                         'handicap', 
                         'market_id', 
+                        'market_name',
                         'matched_date',
                         'placed_date',
                         'cancelled_date',

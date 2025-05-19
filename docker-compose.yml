@@ -14,14 +14,13 @@ services:
       APP_CONTEXT: ${APP_CONTEXT}
       BF_API_KEY_DEV: ${BF_API_KEY_DEV}
       BF_API_KEY_PROD: ${BF_API_KEY_PROD}
-    # command: gunicorn -k gevent -w 1 -b 0.0.0.0:5000 app:app
     command: gunicorn -k gevent -w 1 -b 0.0.0.0:5000 app:app
     depends_on:
       - redis
       - streaming_service
     networks:
       - app-network
-  
+
   streaming_service:
     build:
       context: .
@@ -29,32 +28,11 @@ services:
       - ./webapp:/app
       - ./certs:/certs
       - shared_volume:/data
-    environment:
-      APP_CONTEXT: ${APP_CONTEXT}
-      BF_API_KEY_DEV: ${BF_API_KEY_DEV}
-      BF_API_KEY_PROD: ${BF_API_KEY_PROD}
     networks:
       - app-network
     depends_on:
       - redis
-    command: python stream_price.py
-
-  streaming_service_orders:
-    build:
-      context: .
-    volumes:
-      - ./webapp:/app
-      - ./certs:/certs
-      - shared_volume:/data
-    environment:
-      APP_CONTEXT: ${APP_CONTEXT}
-      BF_API_KEY_DEV: ${BF_API_KEY_DEV}
-      BF_API_KEY_PROD: ${BF_API_KEY_PROD}
-    networks:
-      - app-network
-    depends_on:
-      - app
-    command: python stream_orders.py
+    command: python streaming_control.py
 
   redis:
     image: redis:latest

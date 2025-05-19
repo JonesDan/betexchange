@@ -11,7 +11,9 @@ eventSource.addEventListener('update', function(event) {
         console.log(`Update data for cell ${cellId}`);
         const el_updatetime = document.getElementById("update_time");
 
-        const currentValue = parseFloat(cell.childNodes[1].nodeValue.trim());
+        const button = cell.querySelector("button");
+        const text = button.childNodes[0].nodeValue.trim(); // This grabs only the first text node
+        const currentValue = parseFloat(text);
 
         const newValue = parseFloat(data.price)
         
@@ -165,24 +167,29 @@ eventSource_selection_exposure.addEventListener('update', function(event) {
 
 
 function updateSelection_exp(dataList) {
-    dataList.forEach(data => {
-        const expW_cell = document.getElementById(`${data.market_id}_${data.selection_id}_expW`);
+    if (dataList.length > 0 && dataList[0].market_name.includes('OVERS LINE')) {
+        console.log(`Update overs exposure${dataList[0].market_id}_${dataList[0].selection_id}_expW`);
+        insertHorizontalSubTableRow(dataList[0].market_id, dataList[0].selection_id, dataList);
+    } else {
 
-        if (expW_cell) {
-            console.log(`Update exposure ${data.market_id}_${data.selection_id}_expW`);
+        dataList.forEach(data => {
+            const expW_cell = document.getElementById(`${data.market_id}_${data.selection_id}_expW`);
 
-            expW_cell.textContent = data.back_exposure;
+            if (expW_cell) {
+                console.log(`Update backs exposure ${data.market_id}_${data.selection_id}_expW`);
+                expW_cell.textContent = data.exposure;
 
-            // Add color logic
-            if (parseFloat(data.back_exposure) >= 0) {
-                expW_cell.classList.remove('text-danger');
-                expW_cell.classList.add('text-success');
-            } else {
-                expW_cell.classList.remove('text-success');
-                expW_cell.classList.add('text-danger');
+                // Add color logic
+                if (parseFloat(data.back_exposure) >= 0) {
+                    expW_cell.classList.remove('text-danger');
+                    expW_cell.classList.add('text-success');
+                } else {
+                    expW_cell.classList.remove('text-success');
+                    expW_cell.classList.add('text-danger');
+                }
             }
-        }
-    });
+        });
+    }
 }
 
 

@@ -22,6 +22,10 @@
                 if (gamepad.buttons[3].pressed) { // Detect "B" keypress
                     place_orders("X");
                 }
+
+                if (gamepad.buttons[6].pressed) { // Detect "B" keypress
+                    cancel_all_orders("L Trigger");
+                }
             }
     
         }, 100); // Check every 100ms
@@ -33,6 +37,31 @@
         } else {
             console.log("Vibration API not supported");
         }
+    }
+
+    function cancel_all_orders(shortcut) {
+    
+        triggerVibration();
+        order_details = getSelectedRows(shortcut)
+        showToast(`${shortcut} Button Pressed`);
+        handleButtonClick(shortcut)
+        
+        console.log(`${shortcut} button pressed!`);
+        console.log(order_details);
+    
+        // Send AJAX request using jQuery
+        $.ajax({
+            url: "/cancel_orders",
+            type: "POST",
+            contentType: "application/json",
+            data: JSON.stringify({ bet_id: 'All' }),
+            success: function (response) {
+                showToast(`Cancel Order Summary: ${response.message}`)
+            },
+            error: function (xhr, status, error) {
+                console.error("Error:", error);
+            }
+        });
     }
     
     function place_orders(shortcut) {
@@ -66,16 +95,16 @@
             let rowId = row.id;
             if (rowId && !rowId.includes("-break")) {
                 console.log(`check row ${rowId}`)
-                let selectValue = row.cells[3].querySelector("select").value;
-                let selectValue_hedge = row.cells[4].querySelector("select")?.value || null;
-                let sizeValue = row.cells[6].querySelector("input").value;
-                let sizeMinValue = row.cells[7].querySelector("input").value;
-                let priceValue = row.cells[8].querySelector("input").value;
+                let selectValue = row.cells[2].querySelector("select").value;
+                let selectValue_hedge = row.cells[3].querySelector("select")?.value || null;
+                let sizeValue = row.cells[5].querySelector("input").value;
+                // let sizeMinValue = row.cells[7].querySelector("input").value;
+                let priceValue = row.cells[6].querySelector("input").value;
                 let hedge = selectValue_hedge === shortcut ? true  : false;
                 
                 if (selectValue === shortcut || selectValue_hedge == shortcut) {
-                    console.log(`shortcut: ${shortcut}, size: ${sizeValue}, sizeMin: ${sizeMinValue}, price: ${priceValue}, hedge: ${hedge}, rowId: ${rowId}`)
-                    selectedRows[rowId] = {size: sizeValue, sizeMin: sizeMinValue, price: priceValue, hedge: hedge};
+                    console.log(`shortcut: ${shortcut}, size: ${sizeValue}, price: ${priceValue}, hedge: ${hedge}, rowId: ${rowId}`)
+                    selectedRows[rowId] = {size: sizeValue, price: priceValue, hedge: hedge};
                 }
             }
         });

@@ -131,7 +131,8 @@ resource "linode_instance_disk" "swap" {
 
 resource "linode_instance" "betexchange" {
   label = "betexchange"
-  type = "g6-nanode-1"
+  # type = "g6-nanode-1"
+  type = "g6-dedicated-2"
   region = "eu-west"
 }
 

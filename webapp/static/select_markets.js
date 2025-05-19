@@ -1,11 +1,65 @@
 let selectedMarkets = {}
 
+function handleMarketButtonClick(event) {
+    const button = $(event.currentTarget);
+    const market_id = button.data("market");
+    const market_name = button.data("market_name");
+
+    if (market_id in selectedMarkets) {
+        delete selectedMarkets[market_id];
+        button.removeClass("selected");
+        deleteRowsByName(market_id, market_name);
+    } else {
+        selectedMarkets[market_id] = market_name;
+        button.addClass("selected");
+        addMarketToTable(market_id);
+    }
+
+    // Save state
+    localStorage.setItem('selectedMarkets', JSON.stringify(selectedMarkets));
+
+    updateSelectedMarketsTab();
+}
+
+function updateSelectedMarketsTab() {
+    const count = Object.keys(selectedMarkets).length;
+    document.getElementById('selected_markets_tab').innerHTML = `Select Markets (${count})`;
+}
+
+$(document).ready(function () {
+    const cachedMarkets = JSON.parse(localStorage.getItem('selectedMarkets') || '{}');
+    selectedMarkets = cachedMarkets;
+
+    for (const [market_id, market_name] of Object.entries(cachedMarkets)) {
+        const button = $(`[data-market='${market_id}']`);
+
+        if (button.length) {
+            button.addClass("selected");
+        }
+
+        // Safely add the market to the table
+        addMarketToTable(market_id);
+    }
+
+    updateSelectedMarketsTab();
+});
+
 function insertHorizontalSubTableRow(market_id, selection_id, dataList) {
     const mainTable = document.getElementById('selected-markets');
+    const rowId = `${market_id}_${selection_id}_expW`;
+    let existingRow = document.getElementById(rowId);
 
-    // Create new row for the subtable
-    const newRow = document.createElement('tr');
-    newRow.id = `${market_id}-${selection_id}-overs_exposure`
+    // If row exists, clear it; otherwise, create new row
+    let newRow;
+    if (existingRow) {
+        newRow = existingRow;
+        newRow.innerHTML = ''; // Clear contents to update
+    } else {
+        newRow = document.createElement('tr');
+        newRow.id = rowId;
+        mainTable.appendChild(newRow);
+    }
+
     const newCell = document.createElement('td');
     newCell.colSpan = 11;
 
@@ -14,26 +68,20 @@ function insertHorizontalSubTableRow(market_id, selection_id, dataList) {
     subTable.className = 'table table-bordered table-sm text-center';
 
     if (dataList.length > 0) {
-        // Get all keys from the first dict
-        // const keys = Object.keys(dataList[0]);
         const keys = ['runs', 'profit'];
 
-        // Create a row for each key (runs, profit, etc.)
         keys.forEach(key => {
             const row = document.createElement('tr');
 
-            // Header cell for the row label (e.g., "runs")
             const th = document.createElement('th');
             th.textContent = key;
             row.appendChild(th);
 
-            // Data cells
             dataList.forEach(item => {
                 const td = document.createElement('td');
                 td.textContent = item[key];
                 td.classList.add('fs-6');
 
-                // Color-code profit cells
                 if (key.toLowerCase() === 'profit') {
                     td.classList.add('text-white');
                     if (item[key] > 0) td.classList.add('bg-success');
@@ -50,7 +98,6 @@ function insertHorizontalSubTableRow(market_id, selection_id, dataList) {
 
     newCell.appendChild(subTable);
     newRow.appendChild(newCell);
-    mainTable.appendChild(newRow);
 }
 
 function addMarketToTable(market_id) {
@@ -105,16 +152,6 @@ function addMarketToTable(market_id) {
                                             )
                                             : '';
 
-
-                let id = `${market.market_id}-${market.selection_id}-${market.side}`
-                let hedge_input = side2 === "BACK"
-                                    ? `<select>
-                                        <option value=""></option>
-                                        <option value="X">X</option>
-                                        <option value="Y">Y</option>
-                                    </select>`
-                                    : '';
-
                 const price1 = market.priceList?.[0] || "";
                 const price2 = market.priceList?.[1] || "";
                 const price3 = market.priceList?.[2] || "";
@@ -123,6 +160,21 @@ function addMarketToTable(market_id) {
                 const size2 = market.sizeList?.[1] || "0";
                 const size3 = market.sizeList?.[2] || "0";
 
+                let id = `${market.market_id}-${market.selection_id}-${market.side}`
+                
+                const session_price = data.sessionValues?.[`price-${id}-input`] || price1;
+                const session_size = data.sessionValues?.[`size-${id}-input`] || "0";
+                const session_shortcut = data.sessionValues?.[`shortcut-${id}`] || "";
+                const session_hedge_shortcut = data.sessionValues?.[`shortcut-hedge-${id}`] || "";
+                
+                let hedge_input = side2 === "BACK"
+                                    ? `<select  id="shortcut-hedge-${id}">
+                                            <option value="" ${session_hedge_shortcut === "" ? "selected" : ""}></option>
+                                            <option value="X" ${session_hedge_shortcut === "X" ? "selected" : ""}>X</option>
+                                            <option value="Y" ${session_hedge_shortcut === "Y" ? "selected" : ""}>Y</option>
+                                    </select>`
+                                    : '';
+
                 tableBody.append(`
                     <tr id=${id} class="${rowColor}">
                         <td class="fs-6"><small>${market.selection_name}</small></td>
@@ -130,18 +182,18 @@ function addMarketToTable(market_id) {
                             ${exp}
                         </td>
                         <td>
-                            <select>
-                                <option value=""></option>
-                                <option value="A">A</option>
-                                <option value="B">B</option>
+                            <select id="shortcut-${id}">
+                                <option value="" ${session_shortcut === "" ? "selected" : ""}></option>
+                                <option value="A" ${session_shortcut === "A" ? "selected" : ""}>A</option>
+                                <option value="B" ${session_shortcut === "B" ? "selected" : ""}>B</option>
                             </select>
                         </td>
                         <td>
                             ${hedge_input}
                         </td>
                         <td class="fs-6">${side2}</td>
-                        <td id="size-${id}" class="number-input-column"><input type="number" min="0 value="0"/></td>
-                        <td id="price-${id}" class="number-input-column"><input type="number" min="0" value="${price1}"/></td>
+                        <td id="size-${id}" class="number-input-column"><input id="size-${id}-input" type="number" min="0" value="${session_size}"/></td>
+                        <td id="price-${id}" class="number-input-column"><input id="price-${id}-input" type="number" min="0" value="${session_price}"/></td>
                         <td id="level1-${id}">
                              <button class="btn btn-primary">${price1}<br>
                              <small class="small-text">(£${size1})</small></button>
@@ -156,8 +208,36 @@ function addMarketToTable(market_id) {
                         </td>
                     </tr>
                 `);
+
             });
             if (data.exposure_overs && data.exposure_overs.length > 0) insertHorizontalSubTableRow(data.selected_markets[0].market_id, data.selected_markets[0].selection_id, data.exposure_overs);
+        }
+    });
+}
+
+$(document).on('input', 'td.number-input-column input', function () {
+    const key = this.name || this.id;
+    const value = this.value;
+    cacheInput(key, value);
+});
+
+$(document).on('change', 'td select', function () {
+    const key = this.name || this.id;
+    const value = this.value;
+    cacheInput(key, value);
+});
+
+function cacheInput(key, value) {
+    $.ajax({
+        url: '/cache_input',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ key, value }),
+        success: () => {
+            console.log(`Cached ${key}: ${value}`);
+        },
+        error: (err) => {
+            console.error(`Cache error for ${key}:`, err);
         }
     });
 }
@@ -178,28 +258,31 @@ function deleteRowsByName(market_id, market_name) {
     rows.forEach(row => row.remove());
 }
 
-function handleMarketButtonClick(event) {
+// function handleMarketButtonClick(event) {
 
-    const button = $(event.currentTarget);
-    const market_id = button.data("market");
-    const market_name = button.data("market_name");
+//     const button = $(event.currentTarget);
+//     const market_id = button.data("market");
+//     const market_name = button.data("market_name");
 
-    if (market_id in selectedMarkets) {
-        delete selectedMarkets[market_id];
-        button.removeClass("selected");
-        deleteRowsByName(market_id, market_name);
-    } else {
-        selectedMarkets[market_id] = market_name;
-        button.addClass("selected");
-        addMarketToTable(market_id);
-    }
+//     if (market_id in selectedMarkets) {
+//         delete selectedMarkets[market_id];
+//         button.removeClass("selected");
+//         deleteRowsByName(market_id, market_name);
+//     } else {
+//         selectedMarkets[market_id] = market_name;
+//         button.addClass("selected");
+//         addMarketToTable(market_id);
+//     }
 
-    console.log(`Selected Markets`, selectedMarkets);
+//     // Save to localStorage
+//     localStorage.setItem('selectedMarkets', JSON.stringify(selectedMarkets));
 
-    const count = Object.keys(selectedMarkets).length;
-    document.getElementById('selected_markets_tab').innerHTML = `Select Markets (${count})`;
+//     console.log(`Selected Markets`, selectedMarkets);
 
-};
+//     const count = Object.keys(selectedMarkets).length;
+//     document.getElementById('selected_markets_tab').innerHTML = `Select Markets (${count})`;
+
+// };
 
 
 function updateSelection(market_id, add_remove) {

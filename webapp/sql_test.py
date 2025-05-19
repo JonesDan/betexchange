@@ -41,40 +41,14 @@ market_filter_str = ''
 
 
 selection_exp_overs = query_sqlite(f"""
-                        WITH numbered AS (
-                                    SELECT
-                                        runs,
-                                        profit,
-                                        runs - ROW_NUMBER() OVER (PARTITION BY profit ORDER BY runs) AS grp
-                                    FROM selection_exposure_overs
-                                    ),
-                                    grouped AS (
-                                    SELECT
-                                        MIN(runs) AS start_run,
-                                        MAX(runs) AS end_run,
-                                        profit
-                                    FROM numbered
-                                    GROUP BY profit, grp
-                                    ),
-                                    max_run AS (
-                                    SELECT MAX(runs) AS max_run FROM selection_exposure_overs
-                                    ),
-                                    formatted AS (
-                                    SELECT
-                                        CASE 
-                                        WHEN start_run = end_run AND end_run = (SELECT max_run FROM max_run)
-                                            THEN CAST(end_run AS TEXT) || '+'
-                                        WHEN start_run = end_run
-                                            THEN CAST(start_run AS TEXT)
-                                        WHEN end_run = (SELECT max_run FROM max_run)
-                                            THEN CAST(start_run AS TEXT) || '-' || CAST(end_run AS TEXT) || '+'
-                                        ELSE
-                                            CAST(start_run AS TEXT) || '-' || CAST(end_run AS TEXT)
-                                        END AS runs,
-                                        profit
-                                    FROM grouped
-                                    )
-                                    SELECT * FROM formatted;
+                             SELECT 
+                                o.bet_id, 
+                                o.market_id,
+                                o.size_remaining
+                                FROM
+                                orders o
+                                WHERE o.status = 'EXECUTABLE'
+                                    AND o.bet_id = '{bet_id}'
                                 """)
 
 # selection_exp_overs = query_sqlite(f"""

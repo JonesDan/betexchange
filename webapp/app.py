@@ -5,7 +5,7 @@ from threading import Thread
 import redis
 import os
 import betfairlightweight
-from utils import init_logger, place_order, list_market_catalogue, list_events, get_betfair_client_from_flask_session, get_exposure_overs
+from utils import init_logger, place_order, cancel_order, cancel_all_orders, list_market_catalogue, list_events, get_betfair_client_from_flask_session, get_exposure_overs
 from utils_db import query_sqlite, init_db, delete_sample_files, init_selected_markets
 import queue
 from cryptography.fernet import Fernet
@@ -118,7 +118,6 @@ def eventDetail(event_name, event_id):
         logger.info(f'EventDetail: init_db results {results}')
 
         logger.info(f'EventDetail: Clear selected_markets shelve')
-        init_selected_markets()
 
         return render_template('eventDetail.html', event_name=event_name)
     
@@ -206,8 +205,11 @@ def get_prices():
             price['sizeList'] = [millify(size) for size in price['sizeList'].split(',')]
 
         exposure_overs = get_exposure_overs(market_id)
+        session_prefixes = ('price-', 'size-', 'shortcut-', 'shortcut-hedge-')
+        sessionValues = {key: value for key, value in session.items() if key.startswith(session_prefixes)}
 
-        return jsonify({'selected_markets': prices,'exposure_overs': exposure_overs, 'publish_time': prices[0]['publish_time']})
+        logger.info(f'getPrices: sessionValues: {sessionValues}')
+        return jsonify({'selected_markets': prices,'sessionValues': sessionValues,'exposure_overs': exposure_overs, 'publish_time': prices[0]['publish_time']})
     
     except Exception as e:
         logger.error(f'getPrices: error {e}', exc_info=True)
@@ -257,21 +259,67 @@ def get_orders():
 
 @app.route('/cancel_orders', methods=["POST"])
 def cancel_orders():
-    trading = get_betfair_client_from_flask_session(session)
-    
-    bet_id = request.get_json('bet_id')
-    
-    instruction = filters.cancel_instruction(bet_id=bet_id, size_reduction=2.00)
-    cancel_order = trading.betting.cancel_orders(
-        market_id=market_id, instructions=[instruction]
-    )
+    try:
+        trading = get_betfair_client_from_flask_session(session)
 
-    print(cancel_order.status)
-    for cancel in cancel_order.cancel_instruction_reports:
-        print(
-            "Status: %s, Size Cancelled: %s, Cancelled Date: %s"
-            % (cancel.status, cancel.size_cancelled, cancel.cancelled_date)
-        )
+        result_queue = queue.Queue()
+        threads = []
+        
+        cancel_details = request.get_json('bet_id')
+        bet_id = cancel_details['bet_id']
+
+        logger.info(f'cancelOrder: Cancelling orders {cancel_details}')
+
+        if bet_id == 'All':
+            cancel_all_orders(trading, result_queue)
+        else:
+            bet_id_str = '' if bet_id == 'ALL' else f"AND o.bet_id = '{bet_id}'"
+
+            existing_orders = query_sqlite(f"""
+                                    SELECT 
+                                    o.bet_id, 
+                                    o.market_id,
+                                    o.size_remaining
+                                    FROM
+                                    orders o
+                                    WHERE o.status = 'EXECUTABLE'
+                                        {bet_id_str}
+                                    """)
+
+            for order in existing_orders:
+
+                logger.info(f'cancelOrder: Cancelling details {order}')
+
+                market_id = order['market_id']
+                bet_id = order['bet_id']
+                sr = order['size_remaining']
+
+                thread = Thread(target=cancel_order, args=(trading, bet_id, market_id, sr, result_queue))
+                threads.append(thread)
+                thread.start()
+            
+            # Wait for all threads to finish
+            for thread in threads:
+                thread.join()
+        
+        # Collect results from the queue
+        results = []
+        while not result_queue.empty():
+            results.append(result_queue.get())
+
+        response_str = "\n\n".join(results)
+
+        logger.info(f'cancelOrder: response = {response_str}')
+    
+    except Exception as e:
+        logger.error(f'cancelOrder: error {e}', exc_info=True)
+        response_str = 'Error in cancel order code. Check Logs'
+        pass
+
+    # Example: Process IDs (you can modify this function)
+    return jsonify({"message": f"{response_str}"})
+
+
 
 
 # Process orders
@@ -285,8 +333,6 @@ def place_orders():
         
         order_details = request.get_json('order_details')
 
-        logger.info(f'order_details\n{order_details}')
-
         for order in order_details['order_details']:
 
             logger.info(f"placeOrder: {order_details['order_details'][order]}")
@@ -298,7 +344,6 @@ def place_orders():
             if not hedge:
                 price = float(order_details['order_details'][order]['price'])
                 size = float(order_details['order_details'][order]['size'])
-                sizeMin = float(order_details['order_details'][order]['sizeMin'])
             else:
                 side = 'LAY'
                 price_dict = query_sqlite(f"SELECT price FROM price p WHERE key = '{market_id}-{selection_id}-LAY-3'")
@@ -306,8 +351,7 @@ def place_orders():
                 exposure = query_sqlite(f"SELECT sum(ABS(exposure)) AS size FROM selection_exposure WHERE market_id = '{market_id}'")
                 size =  round(exposure[0]['size'] / price,2)
                 logger.info(f"placeOrder: Hedge order details. seleciton_id: {selection_id}, side: {side} market_id: {market_id}, size: {size}, price: {price}, exp: {exposure}")
-                sizeMin = 0
-            thread = Thread(target=place_order, args=(trading, selection_id, side, market_id, size, price, sizeMin, result_queue))
+            thread = Thread(target=place_order, args=(trading, selection_id, side, market_id, size, price, result_queue))
             threads.append(thread)
             thread.start()
         
@@ -376,7 +420,16 @@ def update_selection():
         pickle.dump(my_list, f)
 
     return "Updated Selection"
-    
+
+@app.route('/cache_input', methods=['POST'])
+def cache_input():
+    data = request.get_json()
+    key = data.get('key')
+    value = data.get('value')
+    session[key] = value
+
+    logger.info(f"cacheInput: {data}")
+    return jsonify(success=True)
 
 # Run App
 if __name__ == '__main__':

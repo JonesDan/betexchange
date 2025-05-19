@@ -37,12 +37,14 @@ sqlite_tables = {
     'selection_exposure' : [
         {'name': 'key' , 'type': 'PRIMARY KEY'},
         {'name': 'market_id' , 'type': 'TEXT'},
+        {'name': 'market_name' , 'type': 'TEXT'},
         {'name': 'selection_id' , 'type': 'INTEGER'},
         {'name': 'exposure' , 'type': 'REAL'},
     ],
     'selection_exposure_overs' : [
         {'name': 'key' , 'type': 'PRIMARY KEY'},
         {'name': 'market_id' , 'type': 'TEXT'},
+        {'name': 'market_name' , 'type': 'TEXT'},
         {'name': 'selection_id' , 'type': 'INTEGER'},
         {'name': 'runs' , 'type': 'INTEGER'},
         {'name': 'profit' , 'type': 'REAL'},
@@ -70,13 +72,14 @@ def calc_order_exposure(market_id='ALL'):
                     SELECT
                             m.market_id || '-' || m.selection_id AS key,
                             m.market_id AS market_id,
+                            m.market_name AS market_name,
                             m.selection_id AS selection_id,
-                            SUM(CASE WHEN side = 'BACK' THEN o.average_price_matched * o.size ELSE 0 END) AS back_winnings,
-                            SUM(CASE WHEN side = 'BACK' THEN (o.average_price_matched * o.size) - o.size ELSE 0 END) AS back_profit,
-                            SUM(CASE WHEN side = 'BACK' THEN o.size ELSE 0 END) AS back_size,
-                            SUM(CASE WHEN side = 'LAY' THEN o.average_price_matched * o.size ELSE 0 END) AS lay_winnings,
-                            SUM(CASE WHEN side = 'LAY' THEN (o.average_price_matched * o.size) - o.size ELSE 0 END) AS lay_liability,
-                            SUM(CASE WHEN side = 'LAY' THEN o.size ELSE 0 END) AS lay_profit
+                            SUM(CASE WHEN side = 'BACK' THEN o.average_price_matched * o.size_matched ELSE 0 END) AS back_winnings,
+                            SUM(CASE WHEN side = 'BACK' THEN (o.average_price_matched * o.size_matched) - o.size_matched ELSE 0 END) AS back_profit,
+                            SUM(CASE WHEN side = 'BACK' THEN o.size_matched ELSE 0 END) AS back_size,
+                            SUM(CASE WHEN side = 'LAY' THEN o.average_price_matched * o.size_matched ELSE 0 END) AS lay_winnings,
+                            SUM(CASE WHEN side = 'LAY' THEN (o.average_price_matched * o.size_matched) - o.size_matched ELSE 0 END) AS lay_liability,
+                            SUM(CASE WHEN side = 'LAY' THEN o.size_matched ELSE 0 END) AS lay_profit
                         FROM market_catalogue m
                         LEFT JOIN orders o ON o.market_id = m.market_id AND o.selection_id = m.selection_id
                         WHERE market_name NOT LIKE '%OVERS LINE%' {market_filter_str}
@@ -97,6 +100,7 @@ def calc_order_exposure(market_id='ALL'):
                     SELECT
                         key,
                         market_id,
+                        market_name,
                         selection_id,
                         COALESCE(back_winnings, 0) - COALESCE(back_size_market, 0) - COALESCE(lay_liability, 0) + COALESCE(lay_profit_market, 0) - COALESCE(lay_profit, 0) AS exposure
                     FROM cte_calcs
@@ -123,11 +127,12 @@ def calc_order_exposure_overs(market_id='ALL'):
                     SELECT
                         m.market_id || '-' || m.selection_id || '-' || rt.n AS key,
                         m.market_id,
+                        m.market_name AS market_name,
                         m.selection_id,
                         rt.n AS runs,
                         SUM(CASE WHEN (rt.n > o.average_price_matched AND o.side = 'LAY')
-                            OR (rt.n < o.average_price_matched AND o.side = 'BACK') THEN o.size
-                            ELSE -o.size END) AS profit
+                            OR (rt.n < o.average_price_matched AND o.side = 'BACK') THEN o.size_matched
+                            ELSE -o.size_matched END) AS profit
                     FROM runs_total rt
                     CROSS JOIN orders o
                     JOIN market_catalogue m

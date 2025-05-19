@@ -40,14 +40,14 @@ def reset_logger(filename):
     open(f'logs/{filename}.log', 'w').close()
 
             
-def place_order(trading, selection_id, b_l, market_id, size, price, sizeMin, result_queue):
+def place_order(trading, selection_id, b_l, market_id, size, price, result_queue):
     try:
         # placing an order
         instructions = []
         order_response = []
 
         # limit_order = filters.limit_order(size=size, price=price, persistence_type="LAPSE", time_in_force="FILL_OR_KILL", min_fill_size=sizeMin)
-        limit_order = filters.limit_order(size=size, price=price, persistence_type="LAPSE")
+        limit_order = filters.limit_order(size=round(size, 2), price=round(price, 2), persistence_type="LAPSE")
         instruction = filters.place_instruction(
             order_type="LIMIT",
             selection_id=selection_id,
@@ -62,13 +62,49 @@ def place_order(trading, selection_id, b_l, market_id, size, price, sizeMin, res
 
         order_response += place_orders.place_instruction_reports
 
-        result = '\n'.join([f"Status: {order.status}, BetId: {order.bet_id}, Average Price Matched: {order.average_price_matched}" for order in order_response])
+        result = '\n'.join([f"Status: {order.status}, BetId: {order.bet_id}, Average Price Matched: {order.average_price_matched}, Error Code: {order.error_code}" for order in order_response])
     except Exception as e:
         result = f"Error placing order {e}"
         pass
 
     result_queue.put(result)
 
+def cancel_order(trading, bet_id, market_id, sr, result_queue):
+    # cancelling an order
+    try:
+        instruction = filters.cancel_instruction(bet_id=bet_id, size_reduction=round(sr,2))
+        cancel_order = trading.betting.cancel_orders(
+            market_id=market_id, instructions=[instruction]
+        )
+
+        print(cancel_order.status)
+        for cancel in cancel_order.cancel_instruction_reports:
+            print(
+                "Status: %s, Size Cancelled: %s, Cancelled Date: %s"
+                % (cancel.status, cancel.size_cancelled, cancel.cancelled_date)
+            )
+            result =  "Status: %s, Size Cancelled: %s, Cancelled Date: %s" % (cancel.status, cancel.size_cancelled, cancel.cancelled_date)
+
+    except Exception as e:
+        result = f"Error placing order {e}"
+        pass
+
+    result_queue.put(result)
+
+def cancel_all_orders(trading, result_queue):
+    # cancelling an order
+    try:
+        # instruction = filters.cancel_instruction()
+        cancel_order = trading.betting.cancel_orders(
+            instructions=[]
+        )
+        result =  f"All Unmatched Orders Cancelled. Status {cancel_order.status}"
+
+    except Exception as e:
+        result = f"Error placing order {e}"
+        pass
+
+    result_queue.put(result)
 
 def list_market_catalogue(trading, event_id_list):
 
