@@ -65,6 +65,7 @@ def login():
             app_key = os.environ[f'BF_API_KEY_{context.upper()}']
             trading = betfairlightweight.APIClient(username, password, app_key=app_key, certs=f'/certs/{context}')
             trading.login()
+            session.permanent = True
             session['username'] = username
             session['app_key'] = app_key
             session['session_token'] = trading.session_token
@@ -117,6 +118,7 @@ def eventDetail(event_name, event_id):
         results = init_db()
         logger.info(f'EventDetail: init_db results {results}')
 
+        init_selected_markets()
         logger.info(f'EventDetail: Clear selected_markets shelve')
 
         return render_template('eventDetail.html', event_name=event_name)

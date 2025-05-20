@@ -1,4 +1,3 @@
-let selectedMarkets = {}
 
 function handleMarketButtonClick(event) {
     const button = $(event.currentTarget);
@@ -25,24 +24,6 @@ function updateSelectedMarketsTab() {
     const count = Object.keys(selectedMarkets).length;
     document.getElementById('selected_markets_tab').innerHTML = `Select Markets (${count})`;
 }
-
-$(document).ready(function () {
-    const cachedMarkets = JSON.parse(localStorage.getItem('selectedMarkets') || '{}');
-    selectedMarkets = cachedMarkets;
-
-    for (const [market_id, market_name] of Object.entries(cachedMarkets)) {
-        const button = $(`[data-market='${market_id}']`);
-
-        if (button.length) {
-            button.addClass("selected");
-        }
-
-        // Safely add the market to the table
-        addMarketToTable(market_id);
-    }
-
-    updateSelectedMarketsTab();
-});
 
 function insertHorizontalSubTableRow(market_id, selection_id, dataList) {
     const mainTable = document.getElementById('selected-markets');
@@ -258,32 +239,6 @@ function deleteRowsByName(market_id, market_name) {
     rows.forEach(row => row.remove());
 }
 
-// function handleMarketButtonClick(event) {
-
-//     const button = $(event.currentTarget);
-//     const market_id = button.data("market");
-//     const market_name = button.data("market_name");
-
-//     if (market_id in selectedMarkets) {
-//         delete selectedMarkets[market_id];
-//         button.removeClass("selected");
-//         deleteRowsByName(market_id, market_name);
-//     } else {
-//         selectedMarkets[market_id] = market_name;
-//         button.addClass("selected");
-//         addMarketToTable(market_id);
-//     }
-
-//     // Save to localStorage
-//     localStorage.setItem('selectedMarkets', JSON.stringify(selectedMarkets));
-
-//     console.log(`Selected Markets`, selectedMarkets);
-
-//     const count = Object.keys(selectedMarkets).length;
-//     document.getElementById('selected_markets_tab').innerHTML = `Select Markets (${count})`;
-
-// };
-
 
 function updateSelection(market_id, add_remove) {
 
@@ -301,10 +256,10 @@ function updateSelection(market_id, add_remove) {
 
 
 // document.getElementById('refreshBtn').addEventListener('click', function () {
-function refreshMarkets() {
+async function refreshMarkets() {
     const currentUrl = window.location.href;
 
-    fetch('/get_markets', {
+    await fetch('/get_markets', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -321,10 +276,13 @@ function refreshMarkets() {
             data.markets.forEach(market => {
                 const button = document.createElement('button');
                 // button.type = 'button';
+                const cachedMarkets = JSON.parse(localStorage.getItem('selectedMarkets') || '{}');
+                selectedMarkets = cachedMarkets;
                 let cl = market.market_id in selectedMarkets ? 'list-group-item list-group-item-action market-btn selected' : 'list-group-item list-group-item-action market-btn';
                 button.className = cl;
                 button.setAttribute('data-market', market.market_id);
                 button.setAttribute('data-market_name', market.market_name);
+                button.setAttribute('id', `button-${market.market_id}`);
                 button.textContent = `${market.market_name} / (£${market.total_matched})`;
                 listGroup.appendChild(button);
             });
@@ -335,13 +293,33 @@ function refreshMarkets() {
 // Use event delegation on a static parent (e.g., #market-list)
 $(document).on('click', '.market-btn', handleMarketButtonClick);
 
-document.addEventListener('DOMContentLoaded', function () {
-    // Execute on page load
-    refreshMarkets();
+document.addEventListener('DOMContentLoaded', async function () {
+    // Wait for refreshMarkets to complete
+    await refreshMarkets();
+
+    const cachedMarkets = JSON.parse(localStorage.getItem('selectedMarkets') || '{}');
+    selectedMarkets = cachedMarkets;
+
+    for (const [market_id, marketData] of Object.entries(cachedMarkets)) {
+        // const button = $(`#button-${market_id}`);
+        // console.log(`button-${market_id} ${button.length}`)
+
+        const safeId = $.escapeSelector(`button-${market_id}`);
+        const button = $(`#${safeId}`);
+
+        if (button.length) {
+            console.log(`select button button-${market_id}`)
+            button.addClass("selected");
+
+            // Safely add the market to the table
+            addMarketToTable(market_id);
+            updateSelectedMarketsTab();
+        }
+    }
 
     // Execute on button click
-    document.getElementById('refreshBtn').addEventListener('click', function () {
-        refreshMarkets();
+    document.getElementById('refreshBtn').addEventListener('click', async function () {
+        await refreshMarkets();
     });
 });
 
@@ -386,7 +364,7 @@ window.addEventListener('load', () => {
         body: JSON.stringify({ url: currentUrl })
     });
 
-    refreshMarkets();
+    // await refreshMarkets();
 });
 
 // Stop process on page unload
