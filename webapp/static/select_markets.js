@@ -1,8 +1,18 @@
+// 🌍 Global scope
+// let selectedMarkets = {};
+const url = window.location.href;
+const segments = url.split('/').filter(segment => segment.length > 0);
+const event_name = decodeURIComponent(segments[segments.length - 2]);
+
+const cachedMarkets = JSON.parse(localStorage.getItem('selectedMarkets') || '{}');
+const selectedMarkets = cachedMarkets[event_name] || {};
+
 
 function handleMarketButtonClick(event) {
     const button = $(event.currentTarget);
     const market_id = button.data("market");
     const market_name = button.data("market_name");
+    const event_name = button.data("event_name");
 
     if (market_id in selectedMarkets) {
         delete selectedMarkets[market_id];
@@ -15,7 +25,9 @@ function handleMarketButtonClick(event) {
     }
 
     // Save state
-    localStorage.setItem('selectedMarkets', JSON.stringify(selectedMarkets));
+    let selectedMarketsTotal = JSON.parse(localStorage.getItem('selectedMarkets')) || {};
+    selectedMarketsTotal[event_name] = selectedMarkets;
+    localStorage.setItem('selectedMarkets', JSON.stringify(selectedMarketsTotal));
 
     updateSelectedMarketsTab();
 }
@@ -276,12 +288,11 @@ async function refreshMarkets() {
             data.markets.forEach(market => {
                 const button = document.createElement('button');
                 // button.type = 'button';
-                const cachedMarkets = JSON.parse(localStorage.getItem('selectedMarkets') || '{}');
-                selectedMarkets = cachedMarkets;
                 let cl = market.market_id in selectedMarkets ? 'list-group-item list-group-item-action market-btn selected' : 'list-group-item list-group-item-action market-btn';
                 button.className = cl;
                 button.setAttribute('data-market', market.market_id);
                 button.setAttribute('data-market_name', market.market_name);
+                button.setAttribute('data-event_name', market.event);
                 button.setAttribute('id', `button-${market.market_id}`);
                 button.textContent = `${market.market_name} / (£${market.total_matched})`;
                 listGroup.appendChild(button);
@@ -294,15 +305,21 @@ async function refreshMarkets() {
 $(document).on('click', '.market-btn', handleMarketButtonClick);
 
 document.addEventListener('DOMContentLoaded', async function () {
+    const url = window.location.href;
+    const segments = url.split('/').filter(segment => segment.length > 0);
+    const event_name = decodeURIComponent(segments[segments.length - 2]);
+
+    const cachedMarkets = JSON.parse(localStorage.getItem('selectedMarkets') || '{}');
+    const selectedMarkets = cachedMarkets[event_name] || {};
+
+    console.log(Object.entries(cachedMarkets))
+
+
     // Wait for refreshMarkets to complete
     await refreshMarkets();
 
-    const cachedMarkets = JSON.parse(localStorage.getItem('selectedMarkets') || '{}');
-    selectedMarkets = cachedMarkets;
 
-    for (const [market_id, marketData] of Object.entries(cachedMarkets)) {
-        // const button = $(`#button-${market_id}`);
-        // console.log(`button-${market_id} ${button.length}`)
+    for (const [market_id, marketData] of Object.entries(selectedMarkets)) {
 
         const safeId = $.escapeSelector(`button-${market_id}`);
         const button = $(`#${safeId}`);
