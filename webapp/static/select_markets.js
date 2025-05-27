@@ -8,7 +8,8 @@ const cachedMarkets = JSON.parse(localStorage.getItem('selectedMarkets') || '{}'
 const selectedMarkets = cachedMarkets[event_name] || {};
 
 
-function handleMarketButtonClick(event) {
+async function handleMarketButtonClick(event) {
+
     const button = $(event.currentTarget);
     const market_id = button.data("market");
     const market_name = button.data("market_name");
@@ -21,7 +22,19 @@ function handleMarketButtonClick(event) {
     } else {
         selectedMarkets[market_id] = market_name;
         button.addClass("selected");
-        addMarketToTable(market_id);
+        const overlay = document.getElementById('loadingOverlay');
+        // Show overlay
+        overlay.classList.remove('d-none');
+        // Optionally lock page scroll
+        document.body.style.overflow = 'hidden';
+        try {
+            // Simulate async task
+            await addMarketToTable(market_id);  // Replace with your real function
+          } finally {
+            // Hide overlay and unlock page scroll
+            overlay.classList.add('d-none');
+            document.body.style.overflow = '';
+          }
     }
 
     // Save state
@@ -93,119 +106,119 @@ function insertHorizontalSubTableRow(market_id, selection_id, dataList) {
     newRow.appendChild(newCell);
 }
 
-function addMarketToTable(market_id) {
 
-    console.log(`Add ${market_id} to selected_markets`)
+async function addMarketToTable(market_id) {
+    console.log(`Add ${market_id} to selected_markets`);
 
-    updateSelection(market_id, 'add')
+    // Show the loading overlay
+    const overlay = document.getElementById('loadingOverlay');
+    overlay.classList.remove('d-none');
+    document.body.style.overflow = 'hidden';
 
-    $.ajax({
-        url: "/get_prices",
-        type: "POST",
-        contentType: "application/json",
-        data: JSON.stringify({ marketid: market_id }),
-        success: function (data) {
-            // Update table with selected markets
-            const tableBody = $("#selected-markets");
-            const el_updatetime = document.getElementById("update_time");
-            const selected_markets = data.selected_markets
-            el_updatetime.innerHTML = `Selected Markets <span class="small-text">updated_at: ${data.publish_time}</span>`
+    updateSelection(market_id, 'add');
+
+    try {
+        const response = await $.ajax({
+            url: "/get_prices",
+            type: "POST",
+            contentType: "application/json",
+            data: JSON.stringify({ marketid: market_id })
+        });
+
+        const tableBody = $("#selected-markets");
+        const el_updatetime = document.getElementById("update_time");
+        const selected_markets = response.selected_markets;
+
+        el_updatetime.innerHTML = `Selected Markets <span class="small-text">updated_at: ${response.publish_time}</span>`;
+        tableBody.append(`
+            <tr id="${selected_markets[0].market_id}-break">
+                <td colspan="10" style="height: 20px;">${selected_markets[0].market_name}</td>
+            </tr>
+        `);
+
+        selected_markets.forEach(market => {
+            const side2 = market.market_name.toUpperCase().includes("OVERS LINE")
+                ? (market.side === "LAY" ? "OVER" : market.side === "BACK" ? "UNDER" : market.side)
+                : market.side;
+
+            const rowColor = side2 === 'LAY' ? 'table-warning'
+                            : side2 === 'UNDER' ? 'table-light'
+                            : side2 === 'BACK' ? 'table-info'
+                            : 'table-secondary';
+
+            let exp_id = market.side === "BACK" ? `${market.market_id}_${market.selection_id}_expW` : `${market.market_id}_${market.selection_id}_expL`;
+            let exp_text_col = parseFloat(`${market.exposure}`) >= 0 ? 'text-success' : 'text-danger';
+            let exp = side2 === "BACK"
+                ? (market.exposure < 0
+                    ? `-£${Math.abs(market.exposure).toFixed(2)}`
+                    : `£${market.exposure}`)
+                : '';
+
+            const price1 = market.priceList?.[0] || "";
+            const price2 = market.priceList?.[1] || "";
+            const price3 = market.priceList?.[2] || "";
+            const size1 = market.sizeList?.[0] || "0";
+            const size2 = market.sizeList?.[1] || "0";
+            const size3 = market.sizeList?.[2] || "0";
+
+            let id = `${market.market_id}-${market.selection_id}-${market.side}`;
+
+            const session_price = response.sessionValues?.[`price-${id}-input`] || price1;
+            const session_size = response.sessionValues?.[`size-${id}-input`] || "0";
+            const session_shortcut = response.sessionValues?.[`shortcut-${id}`] || "";
+            const session_hedge_shortcut = response.sessionValues?.[`shortcut-hedge-${id}`] || "";
+
+            let hedge_input = side2 === "BACK"
+                ? `<select  id="shortcut-hedge-${id}">
+                        <option value="" ${session_hedge_shortcut === "" ? "selected" : ""}></option>
+                        <option value="X" ${session_hedge_shortcut === "X" ? "selected" : ""}>X</option>
+                        <option value="Y" ${session_hedge_shortcut === "Y" ? "selected" : ""}>Y</option>
+                   </select>`
+                : '';
+
             tableBody.append(`
-                <tr id="${selected_markets[0].market_id}-break">
-                    <td colspan="10" style="height: 20px;">${selected_markets[0].market_name}</td> <!-- Break Row -->
+                <tr id=${id} class="${rowColor}">
+                    <td class="fs-6"><small>${market.selection_name}</small></td>
+                    <td class="text-center ${exp_text_col}" id="${exp_id}">${exp}</td>
+                    <td>
+                        <select id="shortcut-${id}">
+                            <option value="" ${session_shortcut === "" ? "selected" : ""}></option>
+                            <option value="A" ${session_shortcut === "A" ? "selected" : ""}>A</option>
+                            <option value="B" ${session_shortcut === "B" ? "selected" : ""}>B</option>
+                        </select>
+                    </td>
+                    <td>${hedge_input}</td>
+                    <td class="fs-6">${side2}</td>
+                    <td id="size-${id}" class="number-input-column"><input id="size-${id}-input" type="number" min="0" value="${session_size}"/></td>
+                    <td id="price-${id}" class="number-input-column"><input id="price-${id}-input" type="number" min="0" value="${session_price}"/></td>
+                    <td id="level0-${id}">
+                         <button class="btn btn-primary">${price1}<br><small class="small-text">(£${size1})</small></button>
+                    </td>
+                    <td id="level1-${id}">
+                         <button class="btn btn-secondary">${price2}<br><small class="small-text">(£${size2})</small></button>
+                    </td>
+                    <td id="level2-${id}">
+                         <button class="btn btn-secondary">${price3}<br><small class="small-text">(£${size3})</small></button>
+                    </td>
                 </tr>
             `);
-            selected_markets.forEach(market => {
-                
-                const side2 = market.market_name.toUpperCase().includes("OVERS LINE")
-                                ? (market.side === "LAY" ? "OVER" : market.side === "BACK" ? "UNDER" : market.side)
-                                : market.side;
+        });
 
-                console.log(`Pull Prices for ${market.market_name}_${market.selection_name}, ${side2}`)
-
-
-                if (side2 === 'LAY') {
-                    rowColor = 'table-warning';
-                  } else if (side2 === 'UNDER') {
-                    rowColor = 'table-light';
-                  } else if (side2 === 'BACK') {
-                    rowColor = 'table-info';
-                  } else {
-                    rowColor = 'table-secondary';
-                  }
-                
-                let exp_id = market.side === "BACK" ? `${market.market_id}_${market.selection_id}_expW` : `${market.market_id}_${market.selection_id}_expL`;
-                let exp_text_col = parseFloat(`${market.exposure}`) >= 0 ? 'text-success' : 'text-danger';
-
-                // let exp  = market.side === "BACK"  ? `£${market.exposure}` : ``;
-                let exp = side2 === "BACK"
-                                            ? (market.exposure < 0
-                                                ? `-£${Math.abs(market.exposure).toFixed(2)}`
-                                                : `£${market.exposure}`
-                                            )
-                                            : '';
-
-                const price1 = market.priceList?.[0] || "";
-                const price2 = market.priceList?.[1] || "";
-                const price3 = market.priceList?.[2] || "";
-
-                const size1 = market.sizeList?.[0] || "0";
-                const size2 = market.sizeList?.[1] || "0";
-                const size3 = market.sizeList?.[2] || "0";
-
-                let id = `${market.market_id}-${market.selection_id}-${market.side}`
-                
-                const session_price = data.sessionValues?.[`price-${id}-input`] || price1;
-                const session_size = data.sessionValues?.[`size-${id}-input`] || "0";
-                const session_shortcut = data.sessionValues?.[`shortcut-${id}`] || "";
-                const session_hedge_shortcut = data.sessionValues?.[`shortcut-hedge-${id}`] || "";
-                
-                let hedge_input = side2 === "BACK"
-                                    ? `<select  id="shortcut-hedge-${id}">
-                                            <option value="" ${session_hedge_shortcut === "" ? "selected" : ""}></option>
-                                            <option value="X" ${session_hedge_shortcut === "X" ? "selected" : ""}>X</option>
-                                            <option value="Y" ${session_hedge_shortcut === "Y" ? "selected" : ""}>Y</option>
-                                    </select>`
-                                    : '';
-
-                tableBody.append(`
-                    <tr id=${id} class="${rowColor}">
-                        <td class="fs-6"><small>${market.selection_name}</small></td>
-                        <td class="text-center ${exp_text_col}" id="${exp_id}">
-                            ${exp}
-                        </td>
-                        <td>
-                            <select id="shortcut-${id}">
-                                <option value="" ${session_shortcut === "" ? "selected" : ""}></option>
-                                <option value="A" ${session_shortcut === "A" ? "selected" : ""}>A</option>
-                                <option value="B" ${session_shortcut === "B" ? "selected" : ""}>B</option>
-                            </select>
-                        </td>
-                        <td>
-                            ${hedge_input}
-                        </td>
-                        <td class="fs-6">${side2}</td>
-                        <td id="size-${id}" class="number-input-column"><input id="size-${id}-input" type="number" min="0" value="${session_size}"/></td>
-                        <td id="price-${id}" class="number-input-column"><input id="price-${id}-input" type="number" min="0" value="${session_price}"/></td>
-                        <td id="level1-${id}">
-                             <button class="btn btn-primary">${price1}<br>
-                             <small class="small-text">(£${size1})</small></button>
-                        </td>
-                        <td id="level2-${id}">
-                            <button class="btn btn-secondary">${price2}<br>
-                            <small class="small-text">(£${size2})</small></button>
-                        </td>
-                        <td id="level3-${id}">
-                            <button class="btn btn-secondary">${price3}<br>
-                            <small class="small-text">(£${size3})</small></button>
-                        </td>
-                    </tr>
-                `);
-
-            });
-            if (data.exposure_overs && data.exposure_overs.length > 0) insertHorizontalSubTableRow(data.selected_markets[0].market_id, data.selected_markets[0].selection_id, data.exposure_overs);
+        if (response.exposure_overs && response.exposure_overs.length > 0) {
+            insertHorizontalSubTableRow(
+                response.selected_markets[0].market_id,
+                response.selected_markets[0].selection_id,
+                response.exposure_overs
+            );
         }
-    });
+    } catch (err) {
+        console.error("Error fetching prices:", err);
+        alert("An error occurred while fetching market data.");
+    } finally {
+        // Always hide the overlay
+        overlay.classList.add('d-none');
+        document.body.style.overflow = '';
+    }
 }
 
 $(document).on('input', 'td.number-input-column input', function () {
@@ -312,8 +325,17 @@ document.addEventListener('DOMContentLoaded', async function () {
     const cachedMarkets = JSON.parse(localStorage.getItem('selectedMarkets') || '{}');
     const selectedMarkets = cachedMarkets[event_name] || {};
 
-    console.log(Object.entries(cachedMarkets))
+    console.log(selectedMarkets)
 
+    // Decide which tab to activate
+    const tabToActivate = (!selectedMarkets || Object.keys(selectedMarkets).length === 0) ? 'selected_markets_tab' : 'place_order_tab';
+
+    // Activate the tab using Bootstrap's Tab API
+    const triggerTab = document.getElementById(tabToActivate);
+    if (triggerTab) {
+        const tab = new bootstrap.Tab(triggerTab);
+        tab.show();
+    }
 
     // Wait for refreshMarkets to complete
     await refreshMarkets();
@@ -339,6 +361,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         await refreshMarkets();
     });
 });
+
 
 function cancelOrder(betId) {
     const button = event.target;

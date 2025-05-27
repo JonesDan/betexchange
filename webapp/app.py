@@ -39,6 +39,8 @@ Session(app)  # Initialize Flask-Session
 redis_client = redis.Redis(host='redis', port=6379)
 # current_process = {'process_price': None, 'process_order': None}
 
+current_event_id = None
+
 ### Flask apps
 
 @app.route("/", methods=["GET", "POST"])
@@ -67,8 +69,9 @@ def login():
             trading.login()
             session.permanent = True
             session['username'] = username
-            session['app_key'] = app_key
             session['session_token'] = trading.session_token
+            session['app_key'] = app_key
+            session['context'] = context
             logger.info(f'Login: Successful Login')
 
             key = Fernet.generate_key()
@@ -111,15 +114,18 @@ def eventList():
 
 @app.route('/eventList/<event_name>/<int:event_id>')
 def eventDetail(event_name, event_id):
+    global current_event_id
     try:
         logger.info(f'EventDetail: Pull event detail for {event_id}')
 
-        logger.info(f'EventDetail: Create sqlite tables')
-        results = init_db()
-        logger.info(f'EventDetail: init_db results {results}')
+        if event_id != current_event_id:
+            logger.info(f'EventDetail: Create sqlite tables')
+            results = init_db()
+            logger.info(f'EventDetail: init_db results {results}')
 
-        init_selected_markets()
-        logger.info(f'EventDetail: Clear selected_markets shelve')
+            init_selected_markets()
+            logger.info(f'EventDetail: Clear selected_markets shelve')
+            current_event_id = event_id
 
         return render_template('eventDetail.html', event_name=event_name)
     
@@ -275,7 +281,7 @@ def cancel_orders():
         if bet_id == 'All':
             cancel_all_orders(trading, result_queue)
         else:
-            bet_id_str = '' if bet_id == 'ALL' else f"AND o.bet_id = '{bet_id}'"
+            bet_id_str = '' if bet_id == 'All' else f"AND o.bet_id = '{bet_id}'"
 
             existing_orders = query_sqlite(f"""
                                     SELECT 
@@ -284,10 +290,13 @@ def cancel_orders():
                                     o.size_remaining
                                     FROM
                                     orders o
+                                    JOIN market_catalogue m
+                                        ON o.market_id = m.market_id AND o.selection_id = m.selection_id
                                     WHERE o.status = 'EXECUTABLE'
                                         {bet_id_str}
                                     """)
 
+            logger.info(f'cancelOrder: Order details {existing_orders}')
             for order in existing_orders:
 
                 logger.info(f'cancelOrder: Cancelling details {order}')
@@ -351,7 +360,7 @@ def place_orders():
                 price_dict = query_sqlite(f"SELECT price FROM price p WHERE key = '{market_id}-{selection_id}-LAY-3'")
                 price = price_dict[0]['price']
                 exposure = query_sqlite(f"SELECT sum(ABS(exposure)) AS size FROM selection_exposure WHERE market_id = '{market_id}'")
-                size =  round(exposure[0]['size'] / price,2)
+                size =  round(exposure[0]['size'] / price,1)
                 logger.info(f"placeOrder: Hedge order details. seleciton_id: {selection_id}, side: {side} market_id: {market_id}, size: {size}, price: {price}, exp: {exposure}")
             thread = Thread(target=place_order, args=(trading, selection_id, side, market_id, size, price, result_queue))
             threads.append(thread)
@@ -393,7 +402,7 @@ def start_process():
     event_id = url.split('/')[-1]
 
     username = session.get('username', 'No name found')
-    app_key = session.get('app_key', 'No app key found')
+    app_key = os.environ[f'BF_API_KEY_{context.upper()}']
     e = session.get('e', 'No e token found')
 
     # Publish event id for price streaming

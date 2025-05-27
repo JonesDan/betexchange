@@ -28,7 +28,9 @@ eventSource.addEventListener('update', function(event) {
             cell.classList.remove('bg-success', 'bg-danger', 'text-white');
         }
 
-        cell.innerHTML = `<button class="btn btn-secondary">${newValue}<br>
+        button_colour = "btn-primary"
+        let button_colour = data.level === 0 ? "btn-primary" : "btn-secondary";
+        cell.innerHTML = `<button class="btn ${button_colour}">${newValue}<br>
                             <small>(£${data.size})</small></button>`;
 
         setTimeout(() => {

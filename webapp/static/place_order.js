@@ -24,7 +24,7 @@
                 }
 
                 if (gamepad.buttons[6].pressed) { // Detect "B" keypress
-                    cancel_all_orders("L Trigger");
+                    cancel_all_orders("Cancel All");
                 }
             }
     
