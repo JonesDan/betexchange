@@ -28,7 +28,6 @@ eventSource.addEventListener('update', function(event) {
             cell.classList.remove('bg-success', 'bg-danger', 'text-white');
         }
 
-        button_colour = "btn-primary"
         let button_colour = data.level === 0 ? "btn-primary" : "btn-secondary";
         cell.innerHTML = `<button class="btn ${button_colour}">${newValue}<br>
                             <small>(£${data.size})</small></button>`;
@@ -178,16 +177,18 @@ function updateSelection_exp(dataList) {
             const expW_cell = document.getElementById(`${data.market_id}_${data.selection_id}_expW`);
 
             if (expW_cell) {
-                console.log(`Update backs exposure ${data.market_id}_${data.selection_id}_expW`);
-                expW_cell.textContent = data.exposure;
+                console.log(`Update backs exposure ${data.market_id}_${data.selection_id}_expW. Exp=${data.exposure}`);
+
+                let exp = data.exposure < 0 ? `-£${Math.abs(data.exposure).toFixed(2)}`: `£${Math.abs(data.exposure).toFixed(2)}`;
+                expW_cell.textContent = exp;
 
                 // Add color logic
-                if (parseFloat(data.back_exposure) >= 0) {
-                    expW_cell.classList.remove('text-danger');
+                if (data.exposure >= 0) {
                     expW_cell.classList.add('text-success');
+                    expW_cell.classList.remove('text-danger');
                 } else {
-                    expW_cell.classList.remove('text-success');
                     expW_cell.classList.add('text-danger');
+                    expW_cell.classList.remove('text-success');
                 }
             }
         });

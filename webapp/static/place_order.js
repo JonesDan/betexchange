@@ -93,7 +93,7 @@
         let selectedRows = {};
         document.querySelectorAll("#market_prices_table tbody tr").forEach(row => {
             let rowId = row.id;
-            if (rowId && !rowId.includes("-break")) {
+            if (rowId && (rowId.includes("BACK") || rowId.includes("LAY"))) {
                 console.log(`check row ${rowId}`)
                 let selectValue = row.cells[2].querySelector("select").value;
                 let selectValue_hedge = row.cells[3].querySelector("select")?.value || null;

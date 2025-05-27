@@ -52,7 +52,7 @@ function updateSelectedMarketsTab() {
 
 function insertHorizontalSubTableRow(market_id, selection_id, dataList) {
     const mainTable = document.getElementById('selected-markets');
-    const rowId = `${market_id}_${selection_id}_expW`;
+    const rowId = `${market_id}_${selection_id}_expW_overs`;
     let existingRow = document.getElementById(rowId);
 
     // If row exists, clear it; otherwise, create new row
@@ -147,11 +147,11 @@ async function addMarketToTable(market_id) {
                             : 'table-secondary';
 
             let exp_id = market.side === "BACK" ? `${market.market_id}_${market.selection_id}_expW` : `${market.market_id}_${market.selection_id}_expL`;
-            let exp_text_col = parseFloat(`${market.exposure}`) >= 0 ? 'text-success' : 'text-danger';
+            let exp_text_col = parseInt(`${market.exposure}`) >= 0 ? 'text-success' : 'text-danger';
             let exp = side2 === "BACK"
                 ? (market.exposure < 0
                     ? `-£${Math.abs(market.exposure).toFixed(2)}`
-                    : `£${market.exposure}`)
+                    : `£${Math.abs(market.exposure).toFixed(2)}`)
                 : '';
 
             const price1 = market.priceList?.[0] || "";
