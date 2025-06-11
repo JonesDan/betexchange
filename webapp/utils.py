@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from betfairlightweight import filters
 from utils_db import upsert_sqlite, create_sample_files, query_sqlite
 import os
+from cryptography.fernet import Fernet
 
 def init_logger(filename):
     # Logging
@@ -218,9 +219,11 @@ def get_betfair_client_from_flask_session(session):
     username = session.get('username', 'No name found')
     context = session.get('context', 'No name found')
     app_key = session.get('app_key', 'No name found')
+    e = session.get('e', 'No name found')
     session_token = session.get('session_token', 'No session token found')
 
     trading = betfairlightweight.APIClient(username, 'test', app_key=app_key, certs=f'/certs/{context}')
     trading.session_token = session_token  # Restore session token
+    trading.keep_alive()
 
     return trading
